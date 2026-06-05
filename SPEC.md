@@ -488,6 +488,16 @@ Columns:
 Display-friendly variants may shorten hashes and signatures, but the static
 JSON export preserves full values.
 
+Summary fields:
+
+- `attempt_count`: number of harness request attempts recorded
+- `requested_candidate_count`: total completions requested from the model
+- `candidate_response_count`: total completion choices returned and evaluated
+
+PASS/FAIL reporting uses `candidate_response_count` for the "within 200" and
+"within 10,000" thresholds, with `requested_candidate_count` retained to show
+provider shortfall or failed requests.
+
 ### 8.3 Static Export
 
 The harness writes:

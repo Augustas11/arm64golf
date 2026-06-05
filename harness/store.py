@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS attempts (
     template TEXT NOT NULL,
     status TEXT NOT NULL,
     error TEXT NOT NULL DEFAULT '',
+    requested_n INTEGER NOT NULL DEFAULT 0,
+    response_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
@@ -42,15 +44,34 @@ class Store:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        self._migrate()
         self.db.commit()
+
+    def _migrate(self) -> None:
+        columns = {row["name"] for row in self.db.execute("PRAGMA table_info(attempts)")}
+        if "requested_n" not in columns:
+            self.db.execute("ALTER TABLE attempts ADD COLUMN requested_n INTEGER NOT NULL DEFAULT 0")
+        if "response_count" not in columns:
+            self.db.execute("ALTER TABLE attempts ADD COLUMN response_count INTEGER NOT NULL DEFAULT 0")
 
     def close(self) -> None:
         self.db.close()
 
-    def record_attempt(self, problem_id: str, template: str, status: str, error: str = "") -> int:
+    def record_attempt(
+        self,
+        problem_id: str,
+        template: str,
+        status: str,
+        error: str = "",
+        requested_n: int = 0,
+        response_count: int = 0,
+    ) -> int:
         cur = self.db.execute(
-            "INSERT INTO attempts (problem_id, template, status, error) VALUES (?, ?, ?, ?)",
-            (problem_id, template, status, error),
+            """
+            INSERT INTO attempts (problem_id, template, status, error, requested_n, response_count)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (problem_id, template, status, error, requested_n, response_count),
         )
         self.db.commit()
         return int(cur.lastrowid)
@@ -86,6 +107,25 @@ class Store:
     def attempt_count(self, problem_id: str) -> int:
         cur = self.db.execute("SELECT COUNT(*) FROM attempts WHERE problem_id = ?", (problem_id,))
         return int(cur.fetchone()[0])
+
+    def attempt_stats(self, problem_id: str) -> dict[str, int]:
+        cur = self.db.execute(
+            """
+            SELECT
+                COUNT(*) AS attempt_count,
+                COALESCE(SUM(requested_n), 0) AS requested_candidate_count,
+                COALESCE(SUM(response_count), 0) AS candidate_response_count
+            FROM attempts
+            WHERE problem_id = ?
+            """,
+            (problem_id,),
+        )
+        row = cur.fetchone()
+        return {
+            "attempt_count": int(row["attempt_count"]),
+            "requested_candidate_count": int(row["requested_candidate_count"]),
+            "candidate_response_count": int(row["candidate_response_count"]),
+        }
 
     def best_candidate(self, problem_id: str) -> sqlite3.Row | None:
         cur = self.db.execute(
@@ -130,9 +170,10 @@ class Store:
     def export_leaderboard(self, problem_id: str, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         rows = self.leaderboard(problem_id)
+        stats = self.attempt_stats(problem_id)
         payload = {
             "problem_id": problem_id,
-            "attempt_count": self.attempt_count(problem_id),
+            **stats,
             "last_update": rows[0]["discovered_at"] if rows else "",
             "rows": rows,
         }

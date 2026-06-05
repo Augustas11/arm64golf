@@ -128,15 +128,34 @@ def run(args: argparse.Namespace) -> int:
         messages = build_prompt(current_source, current_count, args.template)
         if mock_responses:
             responses = mock_responses
-            store.record_attempt(module.PROBLEM_ID, args.template, "mock_ok")
+            store.record_attempt(
+                module.PROBLEM_ID,
+                args.template,
+                "mock_ok",
+                requested_n=len(responses),
+                response_count=len(responses),
+            )
         else:
             try:
                 responses = client.complete(messages)
             except InferenceError as exc:
-                store.record_attempt(module.PROBLEM_ID, args.template, "inference_error", str(exc))
+                store.record_attempt(
+                    module.PROBLEM_ID,
+                    args.template,
+                    "inference_error",
+                    str(exc),
+                    requested_n=args.n,
+                    response_count=0,
+                )
                 continue
 
-            store.record_attempt(module.PROBLEM_ID, args.template, "ok")
+            store.record_attempt(
+                module.PROBLEM_ID,
+                args.template,
+                "ok",
+                requested_n=args.n,
+                response_count=len(responses),
+            )
         for response in responses:
             candidate = module.load(extract_assembly(response))
             verified = sandbox_verify(problem_dir, module, candidate, args.timeout_ms, args.memory_limit_mb)

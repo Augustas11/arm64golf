@@ -51,11 +51,14 @@ def test_store_exports_leaderboard(tmp_path: Path) -> None:
         model_id="model",
         provider_id="air5",
     )
+    store.record_attempt("sort3-arm64", "template", "ok", requested_n=8, response_count=6)
     store.record_receipt("abc123", tmp_path / "receipt.json", "signature")
     out = tmp_path / "leaderboard.json"
     store.export_leaderboard("sort3-arm64", out)
     payload = json.loads(out.read_text())
-    assert payload["attempt_count"] == 0
+    assert payload["attempt_count"] == 1
+    assert payload["requested_candidate_count"] == 8
+    assert payload["candidate_response_count"] == 6
     assert payload["last_update"]
     assert payload["rows"][0]["rank"] == 1
     assert payload["rows"][0]["score"] == 17
@@ -100,6 +103,8 @@ def test_seed_only_loop_exports_receipt_backed_leaderboard(tmp_path: Path, monke
     assert loop_main() == 0
     payload = json.loads(out.read_text())
     assert payload["attempt_count"] == 0
+    assert payload["requested_candidate_count"] == 0
+    assert payload["candidate_response_count"] == 0
     assert payload["rows"][0]["receipt_signature"]
     assert list(receipts_dir.glob("*.json"))
 
@@ -132,8 +137,40 @@ def test_mock_response_loop_exports_attempt_and_receipt(tmp_path: Path, monkeypa
     assert loop_main() == 0
     payload = json.loads(out.read_text())
     assert payload["attempt_count"] == 1
+    assert payload["requested_candidate_count"] == 1
+    assert payload["candidate_response_count"] == 1
     assert payload["rows"][0]["score"] == 18
     assert payload["rows"][0]["receipt_signature"]
+
+
+def test_store_migrates_attempt_accounting_columns(tmp_path: Path) -> None:
+    import sqlite3
+
+    db_path = tmp_path / "old.sqlite"
+    db = sqlite3.connect(db_path)
+    db.execute(
+        """
+        CREATE TABLE attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            problem_id TEXT NOT NULL,
+            template TEXT NOT NULL,
+            status TEXT NOT NULL,
+            error TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        )
+        """
+    )
+    db.commit()
+    db.close()
+
+    store = Store(db_path)
+    store.record_attempt("sort3-arm64", "template", "ok", requested_n=8, response_count=8)
+    assert store.attempt_stats("sort3-arm64") == {
+        "attempt_count": 1,
+        "requested_candidate_count": 8,
+        "candidate_response_count": 8,
+    }
+    store.close()
 
 
 def test_air5_model_check_flattens_unknown_model_schema() -> None:

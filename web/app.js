@@ -3,6 +3,7 @@ const feedEl = document.querySelector("#promotion-feed");
 const bestScoreEl = document.querySelector("#best-score");
 const lastUpdateEl = document.querySelector("#last-update");
 const attemptCountEl = document.querySelector("#attempt-count");
+const candidateResponseCountEl = document.querySelector("#candidate-response-count");
 
 fetch("./public/leaderboard.json", { cache: "no-store" })
   .then((response) => {
@@ -26,6 +27,7 @@ function render(data) {
   const best = rows[0];
   bestScoreEl.textContent = best.score;
   attemptCountEl.textContent = data.attempt_count ?? rows.length;
+  candidateResponseCountEl.textContent = `${data.candidate_response_count ?? 0} candidate responses`;
   lastUpdateEl.textContent = formatDate(data.last_update || best.discovered_at);
 
   rowsEl.innerHTML = rows
