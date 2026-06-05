@@ -1,0 +1,16 @@
+problem_id = "sort3-arm64"
+license = "MIT"
+
+[hardware]
+arch = "arm64"
+os = "macos"
+
+[eval]
+time_budget_ms = 100
+min_tests = 1000
+
+[sandbox]
+profile = "../../sandbox/profile.sb"
+filesystem = "deny"
+network = "deny"
+process_spawn = "deny"
