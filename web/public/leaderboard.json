@@ -1,0 +1,16 @@
+{
+  "problem_id": "sort3-arm64",
+  "rows": [
+    {
+      "candidate_hash": "726c3e4c49b564d0d9ed5613da861ba72c6107951a48939bb932a1d338076040",
+      "candidate_hash_short": "726c3e4c49b5",
+      "discovered_at": "2026-06-05T02:34:12Z",
+      "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+      "provider_id": "air5",
+      "rank": 1,
+      "receipt_signature": "ydeo28TFUxTqfD5HoMlBhEZItr0hrzwVfwt4w635XBWcT2LBbEBg6n+OA0/YKsu1UBoGB73uoEZccz+DqFeiAw==",
+      "receipt_signature_short": "ydeo28TFUxTqfD5H",
+      "score": 18
+    }
+  ]
+}

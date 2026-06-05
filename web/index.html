@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>arm64golf leaderboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./">arm64golf</a>
+      <nav>
+        <a href="https://github.com/Augustas11/macprovider#for-providers">Join as Provider</a>
+        <a href="https://github.com/Augustas11/arm64golf/issues">Contestant Interest</a>
+        <a href="https://github.com/Augustas11/arm64golf">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="overview">
+        <div>
+          <p class="eyebrow">Powered by air5 + Qwen2.5-Coder-7B</p>
+          <h1>Open-weight coding models on Apple Silicon search the ARM64 sort/hash frontier.</h1>
+          <p class="lede">
+            v0.1 starts with <code>sort3-arm64</code>: a public, receipt-backed search for shorter
+            ARM64 routines inspired by AlphaDev's x86 result.
+          </p>
+        </div>
+        <pre class="assembly" aria-label="current reference routine excerpt"><code>cmp   x0, x1
+csetm x3, gt
+eor   x4, x0, x1
+and   x4, x4, x3
+eor   x0, x0, x4
+eor   x1, x1, x4</code></pre>
+      </section>
+
+      <section class="stats" aria-label="leaderboard summary">
+        <div>
+          <span>Current best</span>
+          <strong id="best-score">--</strong>
+          <small>instructions</small>
+        </div>
+        <div>
+          <span>Attempts</span>
+          <strong id="attempt-count">seed</strong>
+          <small>v0.1 static export</small>
+        </div>
+        <div>
+          <span>Last update</span>
+          <strong id="last-update">--</strong>
+          <small>UTC</small>
+        </div>
+      </section>
+
+      <section class="leaderboard" aria-labelledby="leaderboard-title">
+        <div class="section-heading">
+          <h2 id="leaderboard-title">Leaderboard</h2>
+          <p>Verified candidates only. Lower score wins.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Score</th>
+                <th>Candidate</th>
+                <th>Model + Provider</th>
+                <th>Receipt</th>
+                <th>Discovered</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-rows">
+              <tr><td colspan="6">Loading leaderboard...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="feed" aria-labelledby="feed-title">
+        <div class="section-heading">
+          <h2 id="feed-title">Recent Promotions</h2>
+          <p>Every promotion is backed by a deterministic verifier and ed25519 receipt.</p>
+        </div>
+        <ol id="promotion-feed"></ol>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
