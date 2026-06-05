@@ -493,10 +493,17 @@ Summary fields:
 - `attempt_count`: number of harness request attempts recorded
 - `requested_candidate_count`: total completions requested from the model
 - `candidate_response_count`: total completion choices returned and evaluated
+- `run_summary`: derived run evidence, including evaluated responses,
+  verified evaluations, best verified score, and first response ordinals for
+  verified, 17-instruction, and 16-instruction candidates
 
 PASS/FAIL reporting uses `candidate_response_count` for the "within 200" and
 "within 10,000" thresholds, with `requested_candidate_count` retained to show
 provider shortfall or failed requests.
+
+The SQLite store also records each evaluated response in `evaluations`; this
+preserves evidence even when multiple responses deduplicate to the same
+candidate hash.
 
 ### 8.3 Static Export
 
@@ -515,6 +522,11 @@ KISS deployment for v0.1:
 3. Vercel rebuilds
 
 There is no live API in v0.1.
+
+`bin/summarize-run.py` reads the SQLite store and emits a deterministic
+summary/verdict from the recorded attempts and evaluations. PASS-C from a
+verified 16-instruction candidate is automatic; PASS-C from structural
+diversity remains a manual review item.
 
 ## 9. Success Criteria
 

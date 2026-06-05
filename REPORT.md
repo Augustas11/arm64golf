@@ -23,6 +23,9 @@ handoff and live MacProvider credentials are still pending.
 - Leaderboard exports now include `attempt_count`,
   `requested_candidate_count`, and `candidate_response_count` so PASS/FAIL
   thresholds can be audited from run data.
+- The SQLite store records each evaluated response separately from deduped
+  candidates, and `bin/summarize-run.py` derives the current verdict from that
+  evidence.
 - `sandbox/profile.sb` starts from deny-by-default and the native sandbox test
   suite blocks filesystem read, filesystem write, network connect, fork, and
   external exec probes. It also verifies that a non-returning candidate is

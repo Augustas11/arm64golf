@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from harness.store import Store
+
+
+def verdict(summary: dict[str, int | None]) -> str:
+    responses = int(summary["candidate_response_count"] or 0)
+    first_verified = summary["first_verified_response"]
+    first_17 = summary["first_17_response"]
+    first_16 = summary["first_16_response"]
+
+    if first_16 is not None and int(first_16) <= 10_000:
+        return "PASS-C"
+    if first_17 is not None and int(first_17) <= 10_000:
+        return "PASS-B"
+    if first_verified is not None and int(first_verified) <= 200:
+        return "PASS-A"
+    if responses >= 10_000:
+        return "FAIL"
+    if responses == 0:
+        return "PENDING"
+    return "RUNNING"
+
+
+def render_markdown(problem_id: str, summary: dict[str, int | None]) -> str:
+    status = verdict(summary)
+    lines = [
+        f"# arm64golf run summary: {problem_id}",
+        "",
+        f"Verdict: {status}",
+        "",
+        "## Counters",
+        "",
+        f"- attempts: {summary['attempt_count']}",
+        f"- requested candidates: {summary['requested_candidate_count']}",
+        f"- candidate responses: {summary['candidate_response_count']}",
+        f"- evaluated responses: {summary['evaluation_count']}",
+        f"- verified evaluations: {summary['verified_evaluation_count']}",
+        f"- best verified score: {summary['best_verified_score'] or 'none'}",
+        "",
+        "## Threshold Evidence",
+        "",
+        f"- first verified response: {summary['first_verified_response'] or 'none'}",
+        f"- first 17-instruction response: {summary['first_17_response'] or 'none'}",
+        f"- first 16-instruction response: {summary['first_16_response'] or 'none'}",
+        "",
+        "PASS/FAIL thresholds use evaluated candidate-response ordinals. PASS-C here means a verified 16-instruction candidate; structural-diversity PASS-C still requires manual review.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Summarize an arm64golf run from SQLite evidence.")
+    parser.add_argument("--db", type=Path, default=REPO_ROOT / "data" / "arm64golf.sqlite")
+    parser.add_argument("--problem-id", default="sort3-arm64")
+    parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    parser.add_argument("--output", type=Path, help="Write the summary to this path.")
+    args = parser.parse_args()
+
+    store = Store(args.db)
+    try:
+        summary = store.run_summary(args.problem_id)
+    finally:
+        store.close()
+
+    payload = {"problem_id": args.problem_id, "verdict": verdict(summary), **summary}
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n" if args.json else render_markdown(args.problem_id, summary)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(text)
+    else:
+        print(text, end="" if text.endswith("\n") else "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

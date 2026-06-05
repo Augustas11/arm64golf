@@ -52,6 +52,13 @@ def test_store_exports_leaderboard(tmp_path: Path) -> None:
         provider_id="air5",
     )
     store.record_attempt("sort3-arm64", "template", "ok", requested_n=8, response_count=6)
+    store.record_evaluation(
+        attempt_id=1,
+        problem_id="sort3-arm64",
+        candidate_hash="abc123",
+        score=17,
+        verified=True,
+    )
     store.record_receipt("abc123", tmp_path / "receipt.json", "signature")
     out = tmp_path / "leaderboard.json"
     store.export_leaderboard("sort3-arm64", out)
@@ -59,6 +66,8 @@ def test_store_exports_leaderboard(tmp_path: Path) -> None:
     assert payload["attempt_count"] == 1
     assert payload["requested_candidate_count"] == 8
     assert payload["candidate_response_count"] == 6
+    assert payload["run_summary"]["evaluation_count"] == 1
+    assert payload["run_summary"]["first_17_response"] == 1
     assert payload["last_update"]
     assert payload["rows"][0]["rank"] == 1
     assert payload["rows"][0]["score"] == 17
@@ -105,6 +114,7 @@ def test_seed_only_loop_exports_receipt_backed_leaderboard(tmp_path: Path, monke
     assert payload["attempt_count"] == 0
     assert payload["requested_candidate_count"] == 0
     assert payload["candidate_response_count"] == 0
+    assert payload["run_summary"]["evaluation_count"] == 0
     assert payload["rows"][0]["receipt_signature"]
     assert list(receipts_dir.glob("*.json"))
 
@@ -139,6 +149,8 @@ def test_mock_response_loop_exports_attempt_and_receipt(tmp_path: Path, monkeypa
     assert payload["attempt_count"] == 1
     assert payload["requested_candidate_count"] == 1
     assert payload["candidate_response_count"] == 1
+    assert payload["run_summary"]["evaluation_count"] == 1
+    assert payload["run_summary"]["first_verified_response"] == 1
     assert payload["rows"][0]["score"] == 18
     assert payload["rows"][0]["receipt_signature"]
 
@@ -165,12 +177,67 @@ def test_store_migrates_attempt_accounting_columns(tmp_path: Path) -> None:
 
     store = Store(db_path)
     store.record_attempt("sort3-arm64", "template", "ok", requested_n=8, response_count=8)
+    store.record_evaluation(
+        attempt_id=1,
+        problem_id="sort3-arm64",
+        candidate_hash="abc123",
+        score=18,
+        verified=True,
+    )
     assert store.attempt_stats("sort3-arm64") == {
         "attempt_count": 1,
         "requested_candidate_count": 8,
         "candidate_response_count": 8,
     }
+    assert store.run_summary("sort3-arm64")["evaluation_count"] == 1
     store.close()
+
+
+def test_summarize_run_derives_threshold_verdicts(tmp_path: Path) -> None:
+    script = load_script("bin/summarize-run.py")
+    db_path = tmp_path / "db.sqlite"
+    store = Store(db_path)
+    other_attempt = store.record_attempt("other-problem", "template", "ok", requested_n=1, response_count=1)
+    store.record_evaluation(
+        attempt_id=other_attempt,
+        problem_id="other-problem",
+        candidate_hash="other",
+        score=1,
+        verified=True,
+    )
+    for i in range(3):
+        attempt_id = store.record_attempt("sort3-arm64", "template", "ok", requested_n=1, response_count=1)
+        store.record_candidate(
+            candidate_hash=f"hash{i}",
+            problem_id="sort3-arm64",
+            source="cmp x0, x1\n",
+            score=17 if i == 2 else 18,
+            verified=i == 2,
+            model_id="model",
+            provider_id="air5",
+        )
+        store.record_evaluation(
+            attempt_id=attempt_id,
+            problem_id="sort3-arm64",
+            candidate_hash=f"hash{i}",
+            score=17 if i == 2 else 18,
+            verified=i == 2,
+        )
+    summary = store.run_summary("sort3-arm64")
+    store.close()
+
+    assert summary["candidate_response_count"] == 3
+    assert summary["first_verified_response"] == 3
+    assert summary["first_17_response"] == 3
+    assert script.verdict(summary) == "PASS-B"
+
+
+def test_summarize_run_reports_pending_without_responses(tmp_path: Path) -> None:
+    script = load_script("bin/summarize-run.py")
+    store = Store(tmp_path / "db.sqlite")
+    summary = store.run_summary("sort3-arm64")
+    store.close()
+    assert script.verdict(summary) == "PENDING"
 
 
 def test_air5_model_check_flattens_unknown_model_schema() -> None:

@@ -128,7 +128,7 @@ def run(args: argparse.Namespace) -> int:
         messages = build_prompt(current_source, current_count, args.template)
         if mock_responses:
             responses = mock_responses
-            store.record_attempt(
+            attempt_id = store.record_attempt(
                 module.PROBLEM_ID,
                 args.template,
                 "mock_ok",
@@ -149,7 +149,7 @@ def run(args: argparse.Namespace) -> int:
                 )
                 continue
 
-            store.record_attempt(
+            attempt_id = store.record_attempt(
                 module.PROBLEM_ID,
                 args.template,
                 "ok",
@@ -159,17 +159,25 @@ def run(args: argparse.Namespace) -> int:
         for response in responses:
             candidate = module.load(extract_assembly(response))
             verified = sandbox_verify(problem_dir, module, candidate, args.timeout_ms, args.memory_limit_mb)
+            score = module.score(candidate)
             store.record_candidate(
                 candidate_hash=candidate.candidate_hash,
                 problem_id=candidate.problem_id,
                 source=candidate.normalized_source,
-                score=module.score(candidate),
+                score=score,
                 verified=verified,
                 model_id=model_id,
                 provider_id=provider_id,
             )
+            store.record_evaluation(
+                attempt_id=attempt_id,
+                problem_id=candidate.problem_id,
+                candidate_hash=candidate.candidate_hash,
+                score=score,
+                verified=verified,
+            )
             if verified:
-                sign_and_record_receipt(store, args, candidate, module.score(candidate), model_id, provider_id)
+                sign_and_record_receipt(store, args, candidate, score, model_id, provider_id)
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
     return 0
 

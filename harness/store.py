@@ -35,6 +35,17 @@ CREATE TABLE IF NOT EXISTS receipts (
     signature TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
+
+CREATE TABLE IF NOT EXISTS evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    attempt_id INTEGER NOT NULL,
+    problem_id TEXT NOT NULL,
+    candidate_hash TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    verified INTEGER NOT NULL,
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
 """
 
 
@@ -104,6 +115,26 @@ class Store:
         )
         self.db.commit()
 
+    def record_evaluation(
+        self,
+        *,
+        attempt_id: int,
+        problem_id: str,
+        candidate_hash: str,
+        score: int,
+        verified: bool,
+        error: str = "",
+    ) -> int:
+        cur = self.db.execute(
+            """
+            INSERT INTO evaluations (attempt_id, problem_id, candidate_hash, score, verified, error)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (attempt_id, problem_id, candidate_hash, score, int(verified), error),
+        )
+        self.db.commit()
+        return int(cur.lastrowid)
+
     def attempt_count(self, problem_id: str) -> int:
         cur = self.db.execute("SELECT COUNT(*) FROM attempts WHERE problem_id = ?", (problem_id,))
         return int(cur.fetchone()[0])
@@ -126,6 +157,57 @@ class Store:
             "requested_candidate_count": int(row["requested_candidate_count"]),
             "candidate_response_count": int(row["candidate_response_count"]),
         }
+
+    def run_summary(self, problem_id: str) -> dict[str, int | None]:
+        stats = self.attempt_stats(problem_id)
+        eval_count = self.db.execute(
+            "SELECT COUNT(*) FROM evaluations WHERE problem_id = ?",
+            (problem_id,),
+        ).fetchone()[0]
+        verified_count = self.db.execute(
+            "SELECT COUNT(*) FROM evaluations WHERE problem_id = ? AND verified = 1",
+            (problem_id,),
+        ).fetchone()[0]
+        first_verified = self._first_verified_eval(problem_id)
+        first_17 = self._first_verified_eval(problem_id, max_score=17)
+        first_16 = self._first_verified_eval(problem_id, max_score=16)
+        best = self.best_candidate(problem_id)
+        return {
+            **stats,
+            "evaluation_count": int(eval_count),
+            "verified_evaluation_count": int(verified_count),
+            "best_verified_score": int(best["score"]) if best else None,
+            "first_verified_response": self._eval_ordinal(problem_id, first_verified),
+            "first_17_response": self._eval_ordinal(problem_id, first_17),
+            "first_16_response": self._eval_ordinal(problem_id, first_16),
+        }
+
+    def _eval_ordinal(self, problem_id: str, row: sqlite3.Row | None) -> int | None:
+        if row is None:
+            return None
+        cur = self.db.execute(
+            "SELECT COUNT(*) FROM evaluations WHERE problem_id = ? AND id <= ?",
+            (problem_id, row["id"]),
+        )
+        return int(cur.fetchone()[0])
+
+    def _first_verified_eval(self, problem_id: str, max_score: int | None = None) -> sqlite3.Row | None:
+        where = "problem_id = ? AND verified = 1"
+        params: list[object] = [problem_id]
+        if max_score is not None:
+            where += " AND score <= ?"
+            params.append(max_score)
+        cur = self.db.execute(
+            f"""
+            SELECT *
+            FROM evaluations
+            WHERE {where}
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            params,
+        )
+        return cur.fetchone()
 
     def best_candidate(self, problem_id: str) -> sqlite3.Row | None:
         cur = self.db.execute(
@@ -174,6 +256,7 @@ class Store:
         payload = {
             "problem_id": problem_id,
             **stats,
+            "run_summary": self.run_summary(problem_id),
             "last_update": rows[0]["discovered_at"] if rows else "",
             "rows": rows,
         }
