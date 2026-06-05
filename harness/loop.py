@@ -50,6 +50,21 @@ def sign_and_record_receipt(store: Store, args: argparse.Namespace, candidate, s
     store.record_receipt(candidate.candidate_hash, receipt.path, receipt.signature)
 
 
+def load_mock_responses(path: str) -> list[str]:
+    if not path:
+        return []
+    text = Path(path).read_text()
+    stripped = text.strip()
+    if stripped.startswith("["):
+        import json
+
+        values = json.loads(stripped)
+        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+            raise ValueError("--mock-response-file JSON must be a list of strings")
+        return values
+    return [text]
+
+
 def seed_baseline(store: Store, args: argparse.Namespace, problem_dir: Path, module, model_id: str, provider_id: str, timeout_ms: int) -> None:
     count, source = module.baseline()
     candidate = module.load(source)
@@ -80,27 +95,34 @@ def run(args: argparse.Namespace) -> int:
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
         return 0
 
+    mock_responses = load_mock_responses(args.mock_response_file)
     api_key = args.api_key or os.environ.get("MACPROVIDER_API_KEY")
-    if not api_key:
+    if not api_key and not mock_responses:
         raise SystemExit("MACPROVIDER_API_KEY is required unless --seed-only is used")
 
-    client = MacProviderClient(
-        api_key,
-        InferenceConfig(model=model_id, provider=provider_id, n=args.n, temperature=args.temperature, top_p=args.top_p),
-    )
+    client = None
+    if not mock_responses:
+        client = MacProviderClient(
+            api_key,
+            InferenceConfig(model=model_id, provider=provider_id, n=args.n, temperature=args.temperature, top_p=args.top_p),
+        )
 
     for _ in range(args.rounds):
         best = store.best_candidate(module.PROBLEM_ID)
         current_source = best["source"] if best else module.baseline()[1]
         current_count = int(best["score"]) if best else module.baseline()[0]
         messages = build_prompt(current_source, current_count, args.template)
-        try:
-            responses = client.complete(messages)
-        except InferenceError as exc:
-            store.record_attempt(module.PROBLEM_ID, args.template, "inference_error", str(exc))
-            continue
+        if mock_responses:
+            responses = mock_responses
+            store.record_attempt(module.PROBLEM_ID, args.template, "mock_ok")
+        else:
+            try:
+                responses = client.complete(messages)
+            except InferenceError as exc:
+                store.record_attempt(module.PROBLEM_ID, args.template, "inference_error", str(exc))
+                continue
 
-        store.record_attempt(module.PROBLEM_ID, args.template, "ok")
+            store.record_attempt(module.PROBLEM_ID, args.template, "ok")
         for response in responses:
             candidate = module.load(extract_assembly(response))
             verified = sandbox_verify(problem_dir, module, candidate, args.timeout_ms)
@@ -136,6 +158,7 @@ def main() -> int:
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--template", default="no_failed_context")
     parser.add_argument("--timeout-ms", type=int, default=100)
+    parser.add_argument("--mock-response-file", default="")
     parser.add_argument("--seed-only", action="store_true")
     return run(parser.parse_args())
 

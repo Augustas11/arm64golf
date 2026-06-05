@@ -104,6 +104,38 @@ def test_seed_only_loop_exports_receipt_backed_leaderboard(tmp_path: Path, monke
     assert list(receipts_dir.glob("*.json"))
 
 
+def test_mock_response_loop_exports_attempt_and_receipt(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "leaderboard.json"
+    receipts_dir = tmp_path / "receipts"
+    mock_response = tmp_path / "candidate.s"
+    mock_response.write_text(Path("problems/sort3-arm64/reference.s").read_text())
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "loop.py",
+            "--rounds",
+            "1",
+            "--mock-response-file",
+            str(mock_response),
+            "--db",
+            str(tmp_path / "db.sqlite"),
+            "--leaderboard-json",
+            str(out),
+            "--private-key",
+            str(tmp_path / "data" / "sign.key"),
+            "--public-key",
+            str(receipts_dir / "PUBKEY"),
+            "--receipts-dir",
+            str(receipts_dir),
+        ],
+    )
+    assert loop_main() == 0
+    payload = json.loads(out.read_text())
+    assert payload["attempt_count"] == 1
+    assert payload["rows"][0]["score"] == 18
+    assert payload["rows"][0]["receipt_signature"]
+
+
 def test_air5_model_check_flattens_unknown_model_schema() -> None:
     script = load_script("bin/check-air5-model.py")
     payload = {

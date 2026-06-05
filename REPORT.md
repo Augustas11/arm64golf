@@ -20,6 +20,10 @@ handoff and live MacProvider credentials are still pending.
 - `sandbox/profile.sb` starts from deny-by-default and the native sandbox test
   suite blocks filesystem read, filesystem write, network connect, fork, and
   external exec probes.
+- The harness has an offline `--mock-response-file` smoke path that records a
+  synthetic attempt through native sandbox verification, scoring, receipt
+  signing, SQLite persistence, and leaderboard export without MacProvider
+  credentials.
 - `bin/preflight.py` and `bin/check-air5-model.py` exist so operator readiness,
   GitHub auth, API-key presence, and coordinator model visibility can be
   checked reproducibly.

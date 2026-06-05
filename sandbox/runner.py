@@ -69,7 +69,10 @@ def run_candidate(problem_dir: Path, source: str, timeout_ms: int = 100) -> dict
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=max(timeout_ms / 1000, 1),
+            # This covers sandbox process startup plus the fixed 1200-case C
+            # harness. The v0.1 candidate budget remains part of module.toml;
+            # enforcing per-routine CPU timing belongs in the native harness.
+            timeout=max(timeout_ms / 1000, 5),
             check=False,
         )
 

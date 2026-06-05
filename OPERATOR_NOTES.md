@@ -69,5 +69,11 @@ bin/check-air5-model.py --provider-alias m4
 bin/preflight.py --run-tests
 .venv/bin/pytest sandbox/tests -q
 .venv/bin/python sandbox/runner.py
+.venv/bin/python harness/loop.py --rounds 1 --mock-response-file problems/sort3-arm64/reference.s
 .venv/bin/python harness/loop.py --rounds 1
 ```
+
+The `--mock-response-file` command is the offline end-to-end smoke. It records
+one synthetic attempt and exercises candidate loading, native sandbox
+verification, scoring, receipt signing, SQLite persistence, and static JSON
+export without calling MacProvider.

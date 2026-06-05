@@ -117,7 +117,7 @@ class SandboxRunnerTests(unittest.TestCase):
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=5,
+            timeout=20,
             check=False,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -133,7 +133,7 @@ class SandboxRunnerTests(unittest.TestCase):
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                timeout=5,
+                timeout=20,
                 check=False,
             )
         self.assertEqual(proc.returncode, 0, proc.stderr)
