@@ -1263,9 +1263,10 @@ def test_ready_live_run_can_report_ready_when_all_checks_pass(monkeypatch) -> No
 def test_ablation_templates_include_failed_context() -> None:
     """The v0.2 failed_context template must exist alongside the original
     no_failed_context / strict_no_memory / structural_hint variants, and
-    the v0.3 post-canary instruction-count variants must also be
-    registered. Any accidental rename would break --template selection
-    on the CLI."""
+    the v0.3 post-canary instruction-count variants (including the
+    chain_of_thought variant from the prompt-sophistication probe) must
+    also be registered. Any accidental rename would break --template
+    selection on the CLI."""
     from harness.prompts import ABLATION_TEMPLATES
 
     assert set(ABLATION_TEMPLATES.keys()) == {
@@ -1276,6 +1277,7 @@ def test_ablation_templates_include_failed_context() -> None:
         "pass_b_target",
         "csel_hint",
         "dual_example",
+        "chain_of_thought",
     }
 
 
@@ -1379,6 +1381,103 @@ def test_failed_context_template_preserves_target_count_one_below_current() -> N
         template="failed_context",
     )[-1]["content"]
     assert "Propose a variant with 16 instructions" in body
+
+
+def test_chain_of_thought_uses_cot_system_prompt_and_asks_for_fenced_output() -> None:
+    """CoT can't share the bare 'no markdown, no prose' system prompt of
+    the other templates — the whole point is that the model emits prose
+    reasoning followed by a fenced code block. Pin both halves: the
+    distinct system prompt is used, and the user message asks for the
+    final assembly inside triple backticks."""
+    from harness.prompts import build_prompt, COT_SYSTEM_PROMPT, SYSTEM_PROMPT
+
+    msgs = build_prompt(
+        assembly="cmp x0, x1\ncsel x3, x1, x0, le",
+        instruction_count=12,
+        template="chain_of_thought",
+    )
+    assert msgs[0]["role"] == "system"
+    assert msgs[0]["content"] == COT_SYSTEM_PROMPT
+    assert msgs[0]["content"] != SYSTEM_PROMPT  # we actually swapped, not aliased
+    assert "fenced" in COT_SYSTEM_PROMPT.lower() or "fenced" in msgs[1]["content"].lower()
+    assert "triple" in msgs[1]["content"] and "backticks" in msgs[1]["content"]
+    assert "Step 1" in msgs[1]["content"] and "Step 2" in msgs[1]["content"] and "Step 3" in msgs[1]["content"]
+
+
+def test_chain_of_thought_tracks_below_current_best() -> None:
+    """CoT joins the PASS-B-target set. With current best = 12, target
+    must be 11, not 17 (the floor only matters until current best dips
+    below 18)."""
+    from harness.prompts import build_prompt, PASS_B_TARGET_TEMPLATES
+
+    assert "chain_of_thought" in PASS_B_TARGET_TEMPLATES
+    body = build_prompt(
+        assembly="cmp x0, x1\ncsel x3, x1, x0, le",
+        instruction_count=12,
+        template="chain_of_thought",
+    )[-1]["content"]
+    assert "with 11 instructions" in body or "11 instructions" in body
+
+
+def test_extract_assembly_strips_outer_fences_when_response_is_pure_code_block() -> None:
+    """Original v0.1 behavior — a response that's entirely a fenced
+    block (possibly with a language tag) yields the inner assembly."""
+    from harness.prompts import extract_assembly
+
+    response = "```asm\ncmp x0, x1\ncsel x0, x0, x1, le\n```"
+    assert extract_assembly(response) == "cmp x0, x1\ncsel x0, x0, x1, le\n"
+
+
+def test_extract_assembly_pulls_last_fenced_block_from_cot_response() -> None:
+    """CoT prompt elicits prose reasoning + a final fenced block. The
+    extractor must pull the LAST fenced block, not return the whole
+    response (which would not be valid assembly and would fail the
+    verifier with a useless 'unrecognized mnemonic' error)."""
+    from harness.prompts import extract_assembly
+
+    response = (
+        "Step 1: the routine has three csel blocks.\n"
+        "Step 2: the third block's mov is redundant because x3 was\n"
+        "set unconditionally in the prior block.\n\n"
+        "Final routine:\n\n"
+        "```\n"
+        "cmp x0, x1\n"
+        "csel x0, x0, x1, le\n"
+        "csel x1, x1, x0, gt\n"
+        "```\n"
+    )
+    assert extract_assembly(response) == "cmp x0, x1\ncsel x0, x0, x1, le\ncsel x1, x1, x0, gt\n"
+
+
+def test_extract_assembly_pulls_final_block_when_response_has_inline_example() -> None:
+    """If the model emits multiple fenced blocks (e.g. an inline example
+    of the redundancy it identified, then the final dense routine), the
+    extractor must take the LAST one — that's where the model was told
+    to put its final answer."""
+    from harness.prompts import extract_assembly
+
+    response = (
+        "The current best is:\n"
+        "```\n"
+        "cmp x0, x1\ncsel x0, x0, x1, le\nmov x1, x3\n"
+        "```\n"
+        "The mov is redundant. Denser:\n"
+        "```\n"
+        "cmp x0, x1\ncsel x0, x0, x1, le\n"
+        "```\n"
+    )
+    assert extract_assembly(response) == "cmp x0, x1\ncsel x0, x0, x1, le\n"
+
+
+def test_extract_assembly_falls_back_to_stripped_text_when_no_fence() -> None:
+    """No code-block fences (e.g. the original failed_context prompts
+    where the model emits bare assembly) — extractor returns the
+    stripped text with a trailing newline. Pins backward compat for
+    the v0.1 / v0.2 prompts."""
+    from harness.prompts import extract_assembly
+
+    response = "  cmp x0, x1\ncsel x0, x0, x1, le  \n"
+    assert extract_assembly(response) == "cmp x0, x1\ncsel x0, x0, x1, le\n"
 
 
 def test_non_failed_context_templates_do_not_leak_edge_case_block() -> None:

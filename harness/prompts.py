@@ -6,6 +6,19 @@ Return only ARM64 assembly instructions for the requested register ABI.
 Do not include markdown, prose, labels, directives, memory access, branches, or calls."""
 
 
+# Chain-of-thought variants need to violate two rules from the default
+# system prompt — "no prose" and "no markdown" — because the whole point
+# of CoT is that the model reasons in prose and emits the final assembly
+# in a fenced code block at the end. The CoT system prompt allows prose
+# + a single trailing fenced block, but keeps the ABI restrictions
+# (registers, no memory access, no branches, no calls).
+COT_SYSTEM_PROMPT = """You are an ARM64 assembly optimizer working through a reasoning task.
+You may explain your reasoning in prose. Your FINAL answer must be a single fenced
+code block containing only ARM64 assembly: no labels, no directives, no memory
+access, no branches, no calls. The fenced block must be the last content in your
+response."""
+
+
 MAIN_TEMPLATE = """Here is the current best ARM64 routine for sort3 ({instruction_count} instructions).
 
 ABI:
@@ -115,13 +128,78 @@ ABLATION_TEMPLATES.update(
 )
 
 
+# Chain-of-thought variant. The temperature sweep (commit f0e4e95) ruled
+# out sampling as the binding constraint on the 12-instruction floor — no
+# new structures appeared across temp ∈ {0.3, 0.5, 0.9}. The remaining
+# cheap prompt experiment is whether STRUCTURED REASONING in the prompt
+# lets the model find an instruction to fuse or eliminate. CoT asks the
+# model to (1) annotate the current best block-by-block, (2) find a
+# redundancy, (3) propose a denser variant. The reasoning lives in the
+# response body; the final assembly lives in a fenced code block at the
+# end — extract_assembly() now pulls the last fenced block.
+#
+# Going-in prior: ~15% this breaks 12. CoT can extract one or two saved
+# instructions if a denser pattern is adjacent in the model's training
+# distribution; it's unlikely to surface fundamentally new structure that
+# 200+ dual_example samples plus a temperature sweep failed to find. The
+# probe is informative either way: a null result closes the prompt-
+# sophistication question on 7B and routes the next experiment to the
+# marketplace (different model, same harness).
+
+CHAIN_OF_THOUGHT_BLOCK = """
+
+This task is hard. Reason through it explicitly before emitting code.
+
+Step 1 — annotate the current best. For each block of instructions in
+the current routine, write one short line naming:
+- what comparison the block implements (which pair of inputs)
+- which registers it reads, mutates, and leaves untouched
+- whether the block's output is logically necessary given the
+  comparators already executed before it
+
+Step 2 — find a redundancy. Identify the single instruction (or pair of
+instructions) most likely to be eliminable. Candidates include:
+- a `mov` that copies a value that's already in the destination
+- a compare-swap that's logically implied by prior compare-swaps
+- two consecutive csel writes to the same register that can be fused
+- the third comparator in a three-comparator network, when the second
+  comparator already guarantees the relevant ordering
+
+Step 3 — produce the dense variant. Output the final routine in a
+fenced code block at the END of your response, surrounded by triple
+backticks. The block must contain ONLY ARM64 assembly — no comments,
+no markdown, no language tag. The block must be strictly fewer than
+{instruction_count} instructions.
+
+Format:
+
+(your annotation + redundancy analysis as prose)
+
+```
+cmp x0, x1
+...
+```"""
+
+
+# CoT can't share MAIN_TEMPLATE's "Output ONLY the assembly, no commentary"
+# tail line — that contradicts the CoT block's "reason through it explicitly"
+# directive. Build CoT from MAIN_TEMPLATE without that final line so the only
+# instructions the model sees about output shape come from the CoT block.
+_MAIN_TEMPLATE_WITHOUT_OUTPUT_RULE = MAIN_TEMPLATE.rsplit("\n", 1)[0]
+assert _MAIN_TEMPLATE_WITHOUT_OUTPUT_RULE.endswith("instructions that still produces sorted output.")
+
+ABLATION_TEMPLATES["chain_of_thought"] = (
+    _MAIN_TEMPLATE_WITHOUT_OUTPUT_RULE + FAILED_CONTEXT_BLOCK + CHAIN_OF_THOUGHT_BLOCK
+)
+
+
 # Templates that should hard-pin target_count to 17 rather than
 # `instruction_count - 1`. The drifting target is fine for the original
 # failed_context (where the best is the 18-baseline anyway), but harmful
 # for the v0.3 variants once non-baseline 24-instruction routines land on
 # the leaderboard — without this pin the prompt would start asking for
 # "23 instructions" instead of "17", missing the PASS-B threshold.
-PASS_B_TARGET_TEMPLATES = frozenset({"pass_b_target", "csel_hint", "dual_example"})
+PASS_B_TARGET_TEMPLATES = frozenset({"pass_b_target", "csel_hint", "dual_example", "chain_of_thought"})
 PASS_B_TARGET_COUNT = 17
 
 
@@ -140,14 +218,36 @@ def build_prompt(assembly: str, instruction_count: int, template: str = "no_fail
         instruction_count=instruction_count,
         target_count=target_count,
     )
+    system_prompt = COT_SYSTEM_PROMPT if template == "chain_of_thought" else SYSTEM_PROMPT
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": body},
     ]
 
 
 def extract_assembly(text: str) -> str:
+    """Pull ARM64 assembly out of a chat-completion response.
+
+    Three cases, in order:
+
+    1. Response is a single fenced block (possibly with a language tag like
+       ```asm`): strip the outer fences. (Original v0.1 behavior.)
+    2. Response contains a fenced block somewhere — typically a CoT prompt
+       where the model emits reasoning prose followed by ```...``` with
+       the final assembly. Use the contents of the LAST fenced block: the
+       model is told to put its final answer last, and the last fence is
+       the only one we can extract unambiguously when the response also
+       includes inline examples mid-reasoning.
+    3. No fences — return the stripped text verbatim. The verifier will
+       reject if it's not valid assembly.
+
+    Returning the trailing newline matches the v0.1 candidate-loader's
+    expectation that the source ends in '\\n' for hash normalization.
+    """
     stripped = text.strip()
+    if not stripped:
+        return ""
+
     if stripped.startswith("```"):
         lines = stripped.splitlines()
         if lines and lines[0].startswith("```"):
@@ -155,4 +255,17 @@ def extract_assembly(text: str) -> str:
         if lines and lines[-1].startswith("```"):
             lines = lines[:-1]
         stripped = "\n".join(lines).strip()
-    return stripped + ("\n" if stripped else "")
+        return stripped + ("\n" if stripped else "")
+
+    # Case 2: scan for fenced blocks anywhere in the response.
+    fence_starts = [i for i, line in enumerate(text.splitlines()) if line.lstrip().startswith("```")]
+    if len(fence_starts) >= 2:
+        lines = text.splitlines()
+        # Last fenced block runs from the second-to-last ``` to the last ```.
+        start = fence_starts[-2] + 1
+        end = fence_starts[-1]
+        body = "\n".join(lines[start:end]).strip()
+        if body:
+            return body + "\n"
+
+    return stripped + "\n"
