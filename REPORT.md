@@ -1,23 +1,23 @@
 # arm64golf v0.1 Report
 
-Status: pending
+Status: pass-a
 
 ## Verdict
 
-No PASS/FAIL verdict yet. The search has not started because the air5 operator handoff and live MacProvider credentials are still pending.
+Current derived verdict: PASS-A.
 
 ## Run Evidence
 
 - problem: `sort3-arm64`
-- attempts: 0
-- requested candidates: 0
-- candidate responses: 0
-- evaluated responses: 0
-- verified evaluations: 0
-- failed evaluations: 0
-- evaluations with error text: 0
+- attempts: 22
+- requested candidates: 176
+- candidate responses: 23
+- evaluated responses: 23
+- verified evaluations: 8
+- failed evaluations: 15
+- evaluations with error text: 15
 - best verified score: 18
-- first verified response: none
+- first verified response: 11
 - first 17-instruction response: none
 - first 16-instruction response: none
 - near-best verified candidates: 1
@@ -28,6 +28,62 @@ No PASS/FAIL verdict yet. The search has not started because the air5 operator h
 - `08c76e7641c069f2`: 1 candidate(s), representative `726c3e4c49b5`, score 18, 18 instructions: `cmp csetm eor and eor eor cmp csetm eor and eor eor cmp csetm eor and eor eor`
 
 This evidence is for manual PASS-C review only; automatic PASS-C still requires a verified 16-instruction candidate.
+
+## Top Evaluation Errors
+
+- 8x case 2 failed
+- 4x case 1 failed
+- 1x /private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:9:10: error: invalid operand for instruction
+    eors x0, x0, x4
+         ^
+/private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:10:10: error: invalid operand for instruction
+    eors x1, x1, x4
+         ^
+/private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:15:10: error: invalid operand for instruction
+    eors x1, x1, x4
+         ^
+/private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:16:10: error: invalid operand for instruction
+    eors x2, x2, x4
+         ^
+/private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:21:10: error: invalid operand for instruction
+    eors x0, x0, x4
+         ^
+/private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:22:10: error: invalid operand for instruction
+    eors x1, x1, x4
+         ^
+- 1x /private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:9:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
+    xor x0, x0, x4
+    ^
+/private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:10:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
+    xor x1, x1, x4
+    ^
+/private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:15:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
+    xor x1, x1, x4
+    ^
+/private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:16:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
+    xor x2, x2, x4
+    ^
+/private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:21:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
+    xor x0, x0, x4
+    ^
+/private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:22:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
+    xor x1, x1, x4
+    ^
+- 1x /private/tmp/arm64golf-sandbox/run-tzxr3f44/candidate.s:10:10: error: invalid operand for instruction
+    eors x3, x1, x2
+         ^
+/private/tmp/arm64golf-sandbox/run-tzxr3f44/candidate.s:14:10: error: invalid operand for instruction
+    eors x1, x1, x4
+         ^
+/private/tmp/arm64golf-sandbox/run-tzxr3f44/candidate.s:15:10: error: invalid operand for instruction
+    eors x2, x2, x4
+         ^
+/private/tmp/arm64golf-sandbox/run-tzxr3f44/candidate.s:20:10: error: invalid operand for instruction
+    eors x0, x0, x4
+         ^
+/private/tmp/arm64golf-sandbox/run-tzxr3f44/candidate.s:21:10: error: invalid operand for instruction
+    eors x1, x1, x4
+         ^
 
 ## Completion Gate Audit
 
