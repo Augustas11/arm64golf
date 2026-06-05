@@ -65,25 +65,29 @@ Before starting a real search:
 5. run `bin/validate-harness-smoke.py --json` to confirm mock inference,
    sandbox verification, scoring, receipt signing, SQLite persistence, and
    leaderboard export work end to end
-6. run `bin/validate-sandbox.py --json` to confirm the sandbox profile,
+6. run `bin/validate-inference-config.py --json` to confirm the request stays
+   pinned to the MacProvider endpoint, coder model, `air5` provider header,
+   v0.1 sampling defaults, and authentication failure behavior
+7. run `bin/validate-sandbox.py --json` to confirm the sandbox profile,
    native runner, escape-vector blocks, timeout, and memory-cap reporting
-7. run `bin/validate-receipts.py --json` to confirm every leaderboard row is
+8. run `bin/validate-receipts.py --json` to confirm every leaderboard row is
    backed by a matching signed receipt
-8. run `bin/validate-web.py --json` to confirm the static leaderboard files
+9. run `bin/validate-web.py --json` to confirm the static leaderboard files
    match the JSON contract before preview/deploy
-9. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
+10. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
    gate; it should report no blockers before a live search
-10. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
+11. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
    intended provider id are visible; use `--url https://api.streamvc.live/v1/models`
    with `MACPROVIDER_API_KEY` if the coordinator endpoint is unavailable
-11. run local preflight and sandbox tests on the operator machine
-12. run the harness with a small round count before a 10,000-call run
+12. run local preflight and sandbox tests on the operator machine
+13. run the harness with a small round count before a 10,000-call run
 
 Example:
 
 ```bash
 bin/audit-deliverables.py --json
 bin/validate-harness-smoke.py --json
+bin/validate-inference-config.py --json
 bin/validate-sandbox.py --json
 bin/validate-receipts.py --json
 bin/validate-web.py --json
@@ -117,6 +121,12 @@ visibility, preflight, and the air5 model check all pass in the same operator
 environment. If a command sandbox blocks nested GitHub API calls, run the
 individual checks above from the operator shell and keep the readiness output
 as evidence of the remaining external blockers.
+
+Do not attempt air5 software upgrades, model installs, or phase3-binary
+configuration changes from this repo workflow. If `bin/check-air5-model.py`
+or `bin/ready-live-run.py` shows that air5 needs a model download, provider
+software upgrade, config edit, reconnect, or kill-switch change, hand that
+specific action to Augustas so it can be coordinated with the air5 owner.
 
 The `--mock-response-file` command is the offline end-to-end smoke. It records
 one synthetic attempt and exercises candidate loading, native sandbox

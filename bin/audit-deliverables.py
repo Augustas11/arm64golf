@@ -122,6 +122,11 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
             "offline harness smoke passes: mock inference, verifier, score, receipt, SQLite, and leaderboard export",
         ),
         AuditItem(
+            "inference_path",
+            "complete" if inference_config_ok() else "missing",
+            "inference request contract validates: endpoint, coder model, air5 provider header, sampling, and auth behavior",
+        ),
+        AuditItem(
             "sandbox",
             "complete" if sandbox_validator_ok() else "missing",
             "sandbox contract validates: deny profile, native runner, and escape-vector pytest suite",
@@ -217,6 +222,11 @@ def harness_smoke_ok() -> bool:
 
 def sandbox_validator_ok() -> bool:
     code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-sandbox.py"), "--json"], timeout_s=120)
+    return code == 0
+
+
+def inference_config_ok() -> bool:
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-inference-config.py"), "--json"])
     return code == 0
 
 

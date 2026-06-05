@@ -45,6 +45,7 @@ This evidence is for manual PASS-C review only; automatic PASS-C still requires 
 - Seed receipt exists at `receipts/726c3e4c49b5.json` and is verifiable with `bin/verify-receipt.py`.
 - Static leaderboard contains the seed baseline row and run-summary counters.
 - `bin/validate-harness-smoke.py` proves the offline harness path with mock inference, sandbox verification, scoring, receipt signing, SQLite persistence, and leaderboard export.
+- `bin/validate-inference-config.py` proves the pinned MacProvider endpoint, coder model, air5 provider header, sampling defaults, and authentication failure behavior.
 - `bin/validate-sandbox.py` proves the deny-profile contract, native runner, escape-vector pytest suite, timeout, and memory-cap reporting.
 - `bin/validate-receipts.py` verifies leaderboard rows against signed receipt payloads.
 - `bin/validate-web.py` verifies the static leaderboard HTML/JSON contract.
