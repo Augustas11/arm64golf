@@ -5,7 +5,6 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -13,28 +12,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from harness.store import Store
+from harness.verdict import verdict
 
 
-def verdict(summary: dict[str, Any]) -> str:
-    responses = int(summary["candidate_response_count"] or 0)
-    first_verified = summary["first_verified_response"]
-    first_17 = summary["first_17_response"]
-    first_16 = summary["first_16_response"]
-
-    if first_16 is not None and int(first_16) <= 10_000:
-        return "PASS-C"
-    if first_17 is not None and int(first_17) <= 10_000:
-        return "PASS-B"
-    if first_verified is not None and int(first_verified) <= 200:
-        return "PASS-A"
-    if responses >= 10_000:
-        return "FAIL"
-    if responses == 0:
-        return "PENDING"
-    return "RUNNING"
-
-
-def render_markdown(problem_id: str, summary: dict[str, Any]) -> str:
+def render_markdown(problem_id: str, summary: dict[str, object]) -> str:
     status = verdict(summary)
     top_errors = summary.get("top_evaluation_errors") or []
     lines = [

@@ -196,6 +196,75 @@ def test_mock_response_loop_records_failed_evaluation_error(tmp_path: Path, monk
     assert summary["top_evaluation_errors"]
 
 
+def test_mock_response_loop_honors_max_candidate_responses(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "leaderboard.json"
+    receipts_dir = tmp_path / "receipts"
+    mock_response = tmp_path / "candidates.json"
+    reference = Path("problems/sort3-arm64/reference.s").read_text()
+    mock_response.write_text(json.dumps([reference, reference]))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "loop.py",
+            "--rounds",
+            "3",
+            "--max-candidate-responses",
+            "1",
+            "--mock-response-file",
+            str(mock_response),
+            "--db",
+            str(tmp_path / "db.sqlite"),
+            "--leaderboard-json",
+            str(out),
+            "--private-key",
+            str(tmp_path / "data" / "sign.key"),
+            "--public-key",
+            str(receipts_dir / "PUBKEY"),
+            "--receipts-dir",
+            str(receipts_dir),
+        ],
+    )
+    assert loop_main() == 0
+    payload = json.loads(out.read_text())
+    assert payload["attempt_count"] == 1
+    assert payload["candidate_response_count"] == 1
+    assert payload["run_summary"]["evaluation_count"] == 1
+
+
+def test_mock_response_loop_does_not_stop_on_pass_a(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "leaderboard.json"
+    receipts_dir = tmp_path / "receipts"
+    mock_response = tmp_path / "candidate.s"
+    mock_response.write_text(Path("problems/sort3-arm64/reference.s").read_text())
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "loop.py",
+            "--rounds",
+            "2",
+            "--max-candidate-responses",
+            "2",
+            "--mock-response-file",
+            str(mock_response),
+            "--db",
+            str(tmp_path / "db.sqlite"),
+            "--leaderboard-json",
+            str(out),
+            "--private-key",
+            str(tmp_path / "data" / "sign.key"),
+            "--public-key",
+            str(receipts_dir / "PUBKEY"),
+            "--receipts-dir",
+            str(receipts_dir),
+        ],
+    )
+    assert loop_main() == 0
+    payload = json.loads(out.read_text())
+    assert payload["attempt_count"] == 2
+    assert payload["candidate_response_count"] == 2
+    assert payload["run_summary"]["first_verified_response"] == 1
+
+
 def test_store_migrates_attempt_accounting_columns(tmp_path: Path) -> None:
     import sqlite3
 

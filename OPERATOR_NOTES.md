@@ -71,7 +71,8 @@ bin/preflight.py --run-tests
 .venv/bin/python sandbox/runner.py
 .venv/bin/python harness/loop.py --rounds 1 --mock-response-file problems/sort3-arm64/reference.s
 .venv/bin/python bin/summarize-run.py --db data/arm64golf.sqlite
-.venv/bin/python harness/loop.py --rounds 1
+.venv/bin/python harness/loop.py --rounds 1 --max-candidate-responses 8
+.venv/bin/python harness/loop.py --rounds 1250 --max-candidate-responses 10000
 ```
 
 The `--mock-response-file` command is the offline end-to-end smoke. It records
@@ -82,3 +83,7 @@ export without calling MacProvider.
 Use `bin/summarize-run.py` after smoke, live test, and long runs to derive the
 current PENDING/RUNNING/PASS/FAIL status from the SQLite attempt/evaluation
 ledger instead of hand-counting responses.
+
+The harness caps live runs with `--max-candidate-responses`; use `10000` for
+the v0.1 PASS-B/FAIL run. The default stop condition continues after PASS-A
+and stops on PASS-B, PASS-C, or FAIL.

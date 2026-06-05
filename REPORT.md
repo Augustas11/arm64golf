@@ -27,6 +27,8 @@ handoff and live MacProvider credentials are still pending.
   candidates, and `bin/summarize-run.py` derives the current verdict from that
   evidence. Failed evaluations preserve sandbox/compiler error text for
   failure-mode analysis.
+- The harness enforces `--max-candidate-responses` for live runs and continues
+  past PASS-A by default so the same run can still probe for PASS-B/PASS-C.
 - `sandbox/profile.sb` starts from deny-by-default and the native sandbox test
   suite blocks filesystem read, filesystem write, network connect, fork, and
   external exec probes. It also verifies that a non-returning candidate is

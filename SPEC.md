@@ -369,9 +369,14 @@ candidate.
 
 ### 5.5 Attempt Accounting
 
-An inference call counts once per chat completion request, not once per
-returned candidate. The PASS thresholds use inference-call counts: 200 calls
-for PASS-A and 10,000 calls for PASS-B or FAIL.
+The store tracks both HTTP request attempts and returned candidate responses.
+For v0.1 PASS/FAIL thresholds, one counted inference unit is one candidate
+response evaluated by the verifier. `attempt_count` records HTTP requests;
+`candidate_response_count` records the threshold counter.
+
+The live harness defaults to a 10,000 candidate-response cap. It continues
+after PASS-A so the same run can still probe for PASS-B/PASS-C, and stops by
+default when the derived verdict reaches PASS-B, PASS-C, or FAIL.
 
 ## 6. Sandbox
 

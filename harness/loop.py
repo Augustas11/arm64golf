@@ -15,6 +15,7 @@ from harness.inference import DEFAULT_MODEL, DEFAULT_PROVIDER, InferenceConfig, 
 from harness.module import load_problem_module
 from harness.prompts import build_prompt, extract_assembly
 from harness.store import Store
+from harness.verdict import is_search_terminal
 from sandbox.runner import run_candidate as run_sandboxed_candidate
 
 
@@ -118,20 +119,20 @@ def run(args: argparse.Namespace) -> int:
     if not api_key and not mock_responses:
         raise SystemExit("MACPROVIDER_API_KEY is required unless --seed-only is used")
 
-    client = None
-    if not mock_responses:
-        client = MacProviderClient(
-            api_key,
-            InferenceConfig(model=model_id, provider=provider_id, n=args.n, temperature=args.temperature, top_p=args.top_p),
-        )
-
     for _ in range(args.rounds):
+        before_summary = store.run_summary(module.PROBLEM_ID)
+        remaining = remaining_responses(before_summary, args.max_candidate_responses)
+        if remaining == 0:
+            store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
+            break
+        request_n = min(args.n, remaining) if remaining is not None else args.n
+
         best = store.best_candidate(module.PROBLEM_ID)
         current_source = best["source"] if best else module.baseline()[1]
         current_count = int(best["score"]) if best else module.baseline()[0]
         messages = build_prompt(current_source, current_count, args.template)
         if mock_responses:
-            responses = mock_responses
+            responses = mock_responses[:request_n]
             attempt_id = store.record_attempt(
                 module.PROBLEM_ID,
                 args.template,
@@ -140,6 +141,16 @@ def run(args: argparse.Namespace) -> int:
                 response_count=len(responses),
             )
         else:
+            client = MacProviderClient(
+                api_key,
+                InferenceConfig(
+                    model=model_id,
+                    provider=provider_id,
+                    n=request_n,
+                    temperature=args.temperature,
+                    top_p=args.top_p,
+                ),
+            )
             try:
                 responses = client.complete(messages)
             except InferenceError as exc:
@@ -148,7 +159,7 @@ def run(args: argparse.Namespace) -> int:
                     args.template,
                     "inference_error",
                     str(exc),
-                    requested_n=args.n,
+                    requested_n=request_n,
                     response_count=0,
                 )
                 continue
@@ -157,7 +168,7 @@ def run(args: argparse.Namespace) -> int:
                 module.PROBLEM_ID,
                 args.template,
                 "ok",
-                requested_n=args.n,
+                requested_n=request_n,
                 response_count=len(responses),
             )
         for response in responses:
@@ -186,7 +197,16 @@ def run(args: argparse.Namespace) -> int:
             if verified:
                 sign_and_record_receipt(store, args, candidate, score, model_id, provider_id)
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
+        if args.stop_on_verdict and is_search_terminal(store.run_summary(module.PROBLEM_ID)):
+            break
     return 0
+
+
+def remaining_responses(summary: dict[str, object], max_candidate_responses: int) -> int | None:
+    if max_candidate_responses <= 0:
+        return None
+    used = int(summary["candidate_response_count"] or 0)
+    return max(max_candidate_responses - used, 0)
 
 
 def main() -> int:
@@ -207,8 +227,11 @@ def main() -> int:
     parser.add_argument("--template", default="no_failed_context")
     parser.add_argument("--timeout-ms", type=int, default=100)
     parser.add_argument("--memory-limit-mb", type=int, default=256)
+    parser.add_argument("--max-candidate-responses", type=int, default=10_000)
+    parser.add_argument("--no-stop-on-verdict", dest="stop_on_verdict", action="store_false")
     parser.add_argument("--mock-response-file", default="")
     parser.add_argument("--seed-only", action="store_true")
+    parser.set_defaults(stop_on_verdict=True)
     return run(parser.parse_args())
 
 
