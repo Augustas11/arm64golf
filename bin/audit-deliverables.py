@@ -113,6 +113,11 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
             "offline harness smoke passes: mock inference, verifier, score, receipt, SQLite, and leaderboard export",
         ),
         AuditItem(
+            "live_run_contract",
+            "complete" if live_run_contract_ok() else "missing",
+            "live-run contract validates: response cap, failed-evaluation logging, response ordinals, and receipt export",
+        ),
+        AuditItem(
             "inference_path",
             "complete" if inference_config_ok() else "missing",
             "inference request contract validates: endpoint, coder model, air5 provider header, sampling, and auth behavior",
@@ -208,6 +213,11 @@ def sort3_module_validator_ok() -> bool:
 
 def harness_smoke_ok() -> bool:
     code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-harness-smoke.py"), "--json"], timeout_s=90)
+    return code == 0
+
+
+def live_run_contract_ok() -> bool:
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-live-run-contract.py"), "--json"], timeout_s=90)
     return code == 0
 
 

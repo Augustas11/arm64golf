@@ -85,6 +85,11 @@ def test_validate_harness_smoke_accepts_successful_loop(tmp_path: Path, monkeypa
     assert script.validate() == []
 
 
+def test_validate_live_run_contract_accepts_current_loop() -> None:
+    script = load_script("bin/validate-live-run-contract.py")
+    assert script.validate() == []
+
+
 def test_validate_sandbox_accepts_successful_contract(monkeypatch) -> None:
     script = load_script("bin/validate-sandbox.py")
     monkeypatch.setattr(script.shutil, "which", lambda name: f"/usr/bin/{name}")
@@ -590,6 +595,7 @@ def test_write_report_renders_pending_state(tmp_path: Path) -> None:
     assert "bin/ready-live-run.py" in report
     assert "bin/validate-docs.py" in report
     assert "bin/validate-harness-smoke.py" in report
+    assert "bin/validate-live-run-contract.py" in report
     assert "bin/validate-inference-config.py" in report
     assert "bin/validate-sandbox.py" in report
     assert "bin/validate-receipts.py" in report
@@ -782,6 +788,7 @@ def test_deliverable_audit_uses_spec_doc_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "live_run_contract_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: True)
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
@@ -801,6 +808,7 @@ def test_deliverable_audit_uses_readme_doc_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "readme_doc_ok", lambda: False)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "live_run_contract_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: True)
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
@@ -820,6 +828,7 @@ def test_deliverable_audit_uses_sort3_contract_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: False)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "live_run_contract_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: True)
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
@@ -839,6 +848,7 @@ def test_deliverable_audit_uses_harness_smoke_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: False)
+    monkeypatch.setattr(script, "live_run_contract_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: True)
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
@@ -851,6 +861,26 @@ def test_deliverable_audit_uses_harness_smoke_validator(monkeypatch) -> None:
     assert "offline harness smoke passes" in items["harness"].summary
 
 
+def test_deliverable_audit_uses_live_run_contract_validator(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+    monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "spec_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "live_run_contract_ok", lambda: False)
+    monkeypatch.setattr(script, "inference_config_ok", lambda: True)
+    monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "report_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "air5_handoff_validator_ok", lambda: True)
+
+    items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
+    assert items["live_run_contract"].status == "missing"
+    assert "response cap" in items["live_run_contract"].summary
+
+
 def test_deliverable_audit_uses_inference_config_validator(monkeypatch) -> None:
     script = load_script("bin/audit-deliverables.py")
     monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
@@ -858,6 +888,7 @@ def test_deliverable_audit_uses_inference_config_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "live_run_contract_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: False)
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
@@ -877,6 +908,7 @@ def test_deliverable_audit_uses_sandbox_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "live_run_contract_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: True)
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: False)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
@@ -896,6 +928,7 @@ def test_deliverable_audit_uses_report_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "live_run_contract_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: True)
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
@@ -915,6 +948,7 @@ def test_deliverable_audit_uses_air5_handoff_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "live_run_contract_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: True)
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
