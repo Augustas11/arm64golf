@@ -1,0 +1,13 @@
+{
+  "payload": {
+    "candidate_hash": "f41b055a1965669b26eece725e2b24cbbdf2ee694b8110a87fc28df96fb2464a",
+    "harness_version": "0.1.0",
+    "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+    "problem_id": "sort3-arm64",
+    "provider_id": "air5",
+    "score": 24,
+    "ts": "2026-06-05T11:16:02Z"
+  },
+  "public_key": "3q54g41TanQ6C+c841vhFQZg1Vb4xUJG+bWh1E2ZPbk=",
+  "signature": "Dk2CDniq/vbr7TikgYZybuvWCAHy3y592ywaGTXdbCOcRlyShkUSNej3qWXOBZYs6UG2fulEfOSxw7WQBN4SCg=="
+}

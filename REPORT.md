@@ -2,22 +2,83 @@
 
 Status: pass-a
 
+## Network configuration this canary depended on
+
+The v0.3 canary ran against production MacProvider at api.streamvc.live,
+with the following non-default config in effect:
+
+- `gateway.timeouts.coordinator_header_timeout_seconds: 60` (default: 10;
+  bumped 2026-06-05 because a 10s ceiling truncated any non-streaming
+  inference exceeding 10s of generation).
+- `coordinator.ws.write_timeout_s: 60` (default: 10; same reason).
+- `gateway.quotas.account_daily_tokens: 20000000` (default: 100000;
+  default was insufficient for a single 200-call canary).
+
+These were operator config changes made during v0.1 / v0.2 sessions to
+unblock the canary; they remain in effect on Pearl VPS (159.223.165.194)
+as the network's standing config. A future "clean default config"
+canary would need to either run with non-default timeouts, switch to
+streaming, or restrict the workload to fit the defaults.
+
+The v0.3 harness adds its own bound on the buyer side
+(`InferenceConfig.max_tokens=256`, threaded through to the chat
+completions payload) so the 60s timeouts behave as a fallback rather
+than a load-bearing knob. The bound was implicit during the v0.3
+canary (default).
+
 ## Verdict
 
 Current derived verdict: PASS-A.
 
+### Interpretation: technical vs substantive PASS-A
+
+The harness's auto-derived verdict is PASS-A whenever any verified
+candidate exists. Two readings need to be kept distinct:
+
+- **PASS-A (technical)** — at least one verified candidate, regardless
+  of whether its normalized hash matches the baseline `726c3e4c49b5`.
+  v0.1, v0.2, and v0.3 all hit this. It says the harness, sandbox,
+  inference path, and receipt pipeline work end-to-end.
+- **PASS-A (substantive)** — at least one verified candidate with a
+  normalized hash that is NOT `726c3e4c49b5`. Even a rediscovery of
+  the same logical 18-instruction routine with different register
+  allocation would count. v0.3 DOES hit this: the leaderboard ends
+  with four rows — the baseline `726c3e4c49b5` (score 18, rank 1) and
+  three distinct verified non-baseline candidates `47f0dd8d0a24`,
+  `f41b055a1965`, and `17e628abfc2b`, each scoring 24 instructions.
+  These are correct sort3 routines (all 1200 deterministic test
+  cases pass through the sandboxed runner) that happen to be longer
+  than the reference — i.e. the model found genuinely new logic, just
+  not denser logic. They are signed and verifiable via
+  `bin/verify-receipt.py receipts/<hash>.json`.
+
+v0.3 reading: the network supported the workload (30 attempts, 105
+responses, zero `provider_unreachable` / `quota_exhausted` /
+`auth_failed` / `burst_throttled` terminal halts; the run completed
+without operator intervention), and the search discovered three
+distinct non-baseline verified routines at score 24 — but no verified
+candidate at the baseline's score 18 or below (`first_17_response:
+none`). Dominant failure modes are unchanged from v0.1 / v0.2: `case
+2 failed` (already-ascending input), `case 1 failed` (all-equal
+triple), and ISA mnemonic errors (`eors`, `eorr`, `teqz`, `or`) even
+though the `failed_context` template explicitly surfaces them. v0.3
+is therefore best read as **PASS-A (substantive), NOT PASS-B**: the
+loop's search yields genuine non-baseline correctness, but is not yet
+producing candidates dense enough to break or tie the 18-instruction
+reference.
+
 ## Run Evidence
 
 - problem: `sort3-arm64`
-- attempts: 22
-- requested candidates: 176
-- candidate responses: 23
-- evaluated responses: 23
-- verified evaluations: 8
-- failed evaluations: 15
-- evaluations with error text: 15
+- attempts: 30
+- requested candidates: 240
+- candidate responses: 105
+- evaluated responses: 105
+- verified evaluations: 54
+- failed evaluations: 51
+- evaluations with error text: 51
 - best verified score: 18
-- first verified response: 11
+- first verified response: 2
 - first 17-instruction response: none
 - first 16-instruction response: none
 - near-best verified candidates: 1
@@ -31,59 +92,62 @@ This evidence is for manual PASS-C review only; automatic PASS-C still requires 
 
 ## Top Evaluation Errors
 
-- 8x case 2 failed
-- 4x case 1 failed
-- 1x /private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:9:10: error: invalid operand for instruction
-    eors x0, x0, x4
+- 17x case 2 failed
+- 7x case 1 failed
+- 1x /private/tmp/arm64golf-sandbox/run-2478qtx3/candidate.s:7:5: error: unrecognized instruction mnemonic
+    teqz x3, x3
+    ^
+/private/tmp/arm64golf-sandbox/run-2478qtx3/candidate.s:15:5: error: unrecognized instruction mnemonic
+    teqz x3, x3
+    ^
+/private/tmp/arm64golf-sandbox/run-2478qtx3/candidate.s:23:5: error: unrecognized instruction mnemonic
+    teqz x3, x3
+    ^
+/private/tmp/arm64golf-sandbox/run-2478qtx3/candidate.s:8:10: error: directional label undefined
+    b.eq 1f
          ^
-/private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:10:10: error: invalid operand for instruction
+/private/tmp/arm64golf-sandbox/run-2478qtx3/candidate.s:16:10: error: directional label undefined
+    b.eq 2f
+         ^
+/private/tmp/arm64golf-sandbox/run-2478qtx3/candidate.s:24:10: error: directional label undefined
+    b.eq 3f
+         ^
+- 1x /private/tmp/arm64golf-sandbox/run-3s3ho4w8/candidate.s:20:10: error: invalid operand for instruction
+    eors x0, x0, x3
+         ^
+/private/tmp/arm64golf-sandbox/run-3s3ho4w8/candidate.s:21:10: error: invalid operand for instruction
     eors x1, x1, x4
          ^
-/private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:15:10: error: invalid operand for instruction
-    eors x1, x1, x4
+/private/tmp/arm64golf-sandbox/run-3s3ho4w8/candidate.s:22:10: error: invalid operand for instruction
+    eors x2, x2, x7
          ^
-/private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:16:10: error: invalid operand for instruction
-    eors x2, x2, x4
-         ^
-/private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:21:10: error: invalid operand for instruction
-    eors x0, x0, x4
-         ^
-/private/tmp/arm64golf-sandbox/run-jquekbfk/candidate.s:22:10: error: invalid operand for instruction
-    eors x1, x1, x4
-         ^
-- 1x /private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:9:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
-    xor x0, x0, x4
+- 1x /private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:7:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
+    eorr x4, x0, x1
     ^
-/private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:10:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
-    xor x1, x1, x4
+/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:9:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
+    eorr x0, x0, x4
     ^
-/private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:15:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
-    xor x1, x1, x4
+/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:10:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
+    eorr x1, x1, x4
     ^
-/private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:16:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
-    xor x2, x2, x4
+/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:13:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
+    eorr x4, x1, x2
     ^
-/private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:21:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
-    xor x0, x0, x4
+/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:15:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
+    eorr x1, x1, x4
     ^
-/private/tmp/arm64golf-sandbox/run-k8pxa1tw/candidate.s:22:5: error: unrecognized instruction mnemonic, did you mean: eor, orn, orr, ror, xar?
-    xor x1, x1, x4
+/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:16:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
+    eorr x2, x2, x4
     ^
-- 1x /private/tmp/arm64golf-sandbox/run-tzxr3f44/candidate.s:10:10: error: invalid operand for instruction
-    eors x3, x1, x2
-         ^
-/private/tmp/arm64golf-sandbox/run-tzxr3f44/candidate.s:14:10: error: invalid operand for instruction
-    eors x1, x1, x4
-         ^
-/private/tmp/arm64golf-sandbox/run-tzxr3f44/candidate.s:15:10: error: invalid operand for instruction
-    eors x2, x2, x4
-         ^
-/private/tmp/arm64golf-sandbox/run-tzxr3f44/candidate.s:20:10: error: invalid operand for instruction
-    eors x0, x0, x4
-         ^
-/private/tmp/arm64golf-sandbox/run-tzxr3f44/candidate.s:21:10: error: invalid operand for instruction
-    eors x1, x1, x4
-         ^
+/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:19:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
+    eorr x4, x0, x1
+    ^
+/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:21:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
+    eorr x0, x0, x4
+    ^
+/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:22:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
+    eorr x1, x1, x4
+    ^
 
 ## Completion Gate Audit
 
