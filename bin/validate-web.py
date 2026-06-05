@@ -14,6 +14,7 @@ REQUIRED_HTML_IDS = {
     "best-score",
     "attempt-count",
     "candidate-response-count",
+    "attribution-line",
     "last-update",
     "leaderboard-rows",
     "promotion-feed",
@@ -83,9 +84,16 @@ def validate_html(web_dir: Path, errors: list[str]) -> None:
         return
 
     parser = IdCollector()
-    parser.feed(index.read_text())
+    text = index.read_text()
+    parser.feed(text)
     missing_ids = sorted(REQUIRED_HTML_IDS - parser.ids)
     require(not missing_ids, f"web/index.html is missing required ids: {', '.join(missing_ids)}", errors)
+    require("Seed baseline verified locally" in text, "web/index.html must default to seed-baseline attribution", errors)
+    require(
+        "Powered by air5 + Qwen2.5-Coder-7B</p>" not in text,
+        "web/index.html must not statically claim air5/Qwen attribution before live responses",
+        errors,
+    )
     require("./app.js" in parser.scripts, "web/index.html does not load ./app.js", errors)
     require("./styles.css" in parser.stylesheets, "web/index.html does not load ./styles.css", errors)
     require((web_dir / "app.js").exists(), "web/app.js is missing", errors)

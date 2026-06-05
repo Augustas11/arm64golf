@@ -1109,6 +1109,20 @@ def test_validate_web_rejects_incomplete_leaderboard_row(tmp_path: Path) -> None
     assert any("receipt_signature" in error for error in errors)
 
 
+def test_validate_web_rejects_static_air5_seed_overclaim(tmp_path: Path) -> None:
+    script = load_script("bin/validate-web.py")
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    html = Path("web/index.html").read_text().replace("Seed baseline verified locally", "Powered by air5 + Qwen2.5-Coder-7B")
+    (web_dir / "index.html").write_text(html)
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    (web_dir / "public" / "leaderboard.json").write_text(Path("web/public/leaderboard.json").read_text())
+
+    errors = script.validate(web_dir)
+    assert any("statically claim" in error for error in errors)
+
+
 def test_validate_receipts_accepts_current_leaderboard() -> None:
     script = load_script("bin/validate-receipts.py")
     assert script.validate(Path("web/public/leaderboard.json"), Path("receipts")) == []
