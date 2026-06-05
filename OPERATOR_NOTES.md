@@ -62,16 +62,19 @@ Before starting a real search:
 3. run `bin/verify-receipt.py` against the seed receipt
 4. run `bin/audit-deliverables.py --json` to confirm local artifacts are
    complete and only approved pending/deferred gates remain
-5. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
+5. run `bin/validate-web.py --json` to confirm the static leaderboard files
+   match the JSON contract before preview/deploy
+6. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
    intended provider id are visible; use `--url https://api.streamvc.live/v1/models`
    with `MACPROVIDER_API_KEY` if the coordinator endpoint is unavailable
-6. run local preflight and sandbox tests on the operator machine
-7. run the harness with a small round count before a 10,000-call run
+7. run local preflight and sandbox tests on the operator machine
+8. run the harness with a small round count before a 10,000-call run
 
 Example:
 
 ```bash
 bin/audit-deliverables.py --json
+bin/validate-web.py --json
 bin/check-air5-model.py --provider-alias m4
 bin/preflight.py --run-tests
 .venv/bin/pytest sandbox/tests -q

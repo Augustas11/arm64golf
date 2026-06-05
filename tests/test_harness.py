@@ -629,3 +629,23 @@ def test_deliverable_audit_offline_mode_skips_visibility(monkeypatch) -> None:
     result = script.git_repo_status(check_visibility=False)
     assert result.status == "pending"
     assert "offline mode" in result.summary
+
+
+def test_validate_web_accepts_current_static_assets() -> None:
+    script = load_script("bin/validate-web.py")
+    assert script.validate(Path("web")) == []
+
+
+def test_validate_web_rejects_incomplete_leaderboard_row(tmp_path: Path) -> None:
+    script = load_script("bin/validate-web.py")
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    (web_dir / "index.html").write_text(Path("web/index.html").read_text())
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    payload = json.loads(Path("web/public/leaderboard.json").read_text())
+    del payload["rows"][0]["receipt_signature"]
+    (web_dir / "public" / "leaderboard.json").write_text(json.dumps(payload))
+
+    errors = script.validate(web_dir)
+    assert any("receipt_signature" in error for error in errors)

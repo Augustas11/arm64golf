@@ -155,10 +155,8 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
         ),
         AuditItem(
             "web",
-            "complete"
-            if all(file_exists(path) for path in ["web/index.html", "web/app.js", "web/styles.css", "web/public/leaderboard.json"])
-            else "missing",
-            "static leaderboard preview files and JSON export are present",
+            "complete" if web_validator_ok() else "missing",
+            "static leaderboard preview files are present and pass bin/validate-web.py",
         ),
         AuditItem(
             "air5_handoff",
@@ -217,6 +215,11 @@ def render_markdown(items: list[AuditItem]) -> str:
         lines.append(f"- **{item.id}**: {item.status} - {item.summary}")
     lines.append("")
     return "\n".join(lines)
+
+
+def web_validator_ok() -> bool:
+    code, _ = run([str(REPO_ROOT / "bin" / "validate-web.py"), "--json"])
+    return code == 0
 
 
 def main() -> int:
