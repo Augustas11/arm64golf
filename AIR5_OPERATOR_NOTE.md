@@ -46,6 +46,16 @@ Reconnect the provider to the coordinator, then verify the model appears:
 
 ```bash
 curl -fsS https://coordinator.streamvc.live/v1/models
+bin/check-air5-model.py --provider-alias m4
+```
+
+If `https://coordinator.streamvc.live/v1/models` is unavailable or returns
+404, check the authenticated public API model list instead:
+
+```bash
+MACPROVIDER_API_KEY=... bin/check-air5-model.py \
+  --url https://api.streamvc.live/v1/models \
+  --provider-alias m4
 ```
 
 Confirm:
@@ -78,5 +88,6 @@ Emergency kill switch:
 - [ ] Multi-model support verified, or single-model constraint documented
 - [ ] Provider reconnected
 - [ ] Coordinator `/v1/models` includes the coder model
+- [ ] `bin/check-air5-model.py --provider-alias m4` passes
 - [ ] Public provider id confirmed as `air5` or mapping documented
 - [ ] Kill switch tested or documented as untested-pending-handoff

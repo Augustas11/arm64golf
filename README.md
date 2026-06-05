@@ -2,7 +2,8 @@
 
 **Open-weight coding models on Apple Silicon search the ARM64 sort/hash frontier. Powered by the MacProvider network.**
 
-Live leaderboard: pending Phase 7 deployment.
+Live leaderboard: private test preview pending. Public launch is intentionally
+deferred until the operator approves opening `arm64golf` to everyone.
 
 ## What This Is
 

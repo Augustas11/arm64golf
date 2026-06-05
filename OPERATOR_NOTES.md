@@ -2,25 +2,28 @@
 
 ## GitHub
 
-Target repo:
+Target test repo:
 
 ```text
 https://github.com/Augustas11/arm64golf
 ```
 
-This local environment currently cannot create or push the repo because both
-configured `gh` tokens report invalid authentication. Re-authenticate the
-`Augustas11` account, then run:
+The repo is private during the test phase. Do not make it public until the
+operator explicitly approves launch.
 
 ```bash
 gh auth switch -u Augustas11
-gh repo create Augustas11/arm64golf --public --source=. --remote=origin --description "Open-weight coding models on Apple Silicon search the ARM64 sort/hash frontier. Powered by MacProvider."
+gh repo create Augustas11/arm64golf --private --source=. --remote=origin --description "Open-weight coding models on Apple Silicon search the ARM64 sort/hash frontier. Powered by MacProvider."
 git push -u origin main
 ```
 
 ## Static Leaderboard Deployment
 
 The web surface is static and lives under `web/`.
+
+During testing, deploy previews only. Do not attach
+`arm64golf.streamvc.live` or publish a production deployment until the repo and
+leaderboard are approved for public launch.
 
 Local preview:
 
@@ -36,14 +39,14 @@ Suggested Vercel settings:
 - output directory: `.`
 - config file: `web/vercel.json`
 
-Suggested public hostname:
+Future public hostname:
 
 ```text
 arm64golf.streamvc.live
 ```
 
-DNS setup is deferred until the Vercel project exists. Point the subdomain to
-the Vercel target shown by `vercel domains` or the Vercel dashboard.
+DNS setup is deferred until launch approval. Point the subdomain to the Vercel
+target shown by `vercel domains` or the Vercel dashboard only after approval.
 
 ## Run Notes
 
@@ -52,12 +55,17 @@ Before starting a real search:
 1. complete `AIR5_OPERATOR_NOTE.md`
 2. confirm `MACPROVIDER_API_KEY` is set
 3. run `bin/verify-receipt.py` against the seed receipt
-4. run sandbox tests on the operator machine
-5. run the harness with a small round count before a 10,000-call run
+4. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
+   intended provider id are visible; use `--url https://api.streamvc.live/v1/models`
+   with `MACPROVIDER_API_KEY` if the coordinator endpoint is unavailable
+5. run local preflight and sandbox tests on the operator machine
+6. run the harness with a small round count before a 10,000-call run
 
 Example:
 
 ```bash
+bin/check-air5-model.py --provider-alias m4
+bin/preflight.py --run-tests
 .venv/bin/pytest sandbox/tests -q
 .venv/bin/python sandbox/runner.py
 .venv/bin/python harness/loop.py --rounds 1

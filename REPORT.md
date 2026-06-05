@@ -1,6 +1,6 @@
 # arm64golf v0.1 Report
 
-Status: not yet run against live `air5` inference.
+Status: private test bootstrap; not yet run against live `air5` inference.
 
 ## Verdict
 
@@ -18,15 +18,24 @@ handoff and live MacProvider credentials are still pending.
 - `sandbox/profile.sb` starts from deny-by-default and the native sandbox test
   suite blocks filesystem read, filesystem write, network connect, fork, and
   external exec probes.
+- `bin/preflight.py` and `bin/check-air5-model.py` exist so operator readiness,
+  GitHub auth, API-key presence, and coordinator model visibility can be
+  checked reproducibly.
+- As of 2026-06-05, `https://coordinator.streamvc.live/v1/models` returns 404
+  from this environment, while `https://api.streamvc.live/v1/models` returns
+  401 without a bearer token. The authenticated API endpoint is the current
+  fallback path for model visibility checks.
 
 ## Pending Before PASS/FAIL Run
 
-- Re-authenticate GitHub CLI for `Augustas11`, create the public repo, and push
-  `main`.
+- Create or use the private `Augustas11/arm64golf` test repo and push `main`.
 - Complete the air5 coder-model handoff.
-- Confirm live provider id and model availability.
+- Confirm live provider id and model availability with `bin/check-air5-model.py`.
+- Provide `MACPROVIDER_API_KEY` for authenticated model checks and live
+  inference.
 - Run the search harness with `MACPROVIDER_API_KEY`.
-- Deploy `web/` and configure `arm64golf.streamvc.live`.
+- Deploy `web/` to a preview/private target. Configure `arm64golf.streamvc.live`
+  only after explicit public launch approval.
 
 ## PASS/FAIL Criteria
 

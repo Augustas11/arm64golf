@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,14 @@ from harness.attest import sign_receipt, verify_receipt
 from harness.inference import InferenceError, parse_chat_response
 from harness.module import load_problem_module
 from harness.store import Store
+
+
+def load_script(path: str):
+    spec = importlib.util.spec_from_file_location(path.replace("/", "_"), path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_load_sort3_module_and_verify_baseline() -> None:
@@ -63,3 +72,42 @@ def test_receipt_round_trip(tmp_path: Path) -> None:
     }
     receipt = sign_receipt(payload, tmp_path / "sign.key", tmp_path / "PUBKEY", tmp_path / "receipts")
     assert verify_receipt(receipt.path)
+
+
+def test_air5_model_check_flattens_unknown_model_schema() -> None:
+    script = load_script("bin/check-air5-model.py")
+    payload = {
+        "data": [
+            {
+                "id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+                "providers": [{"id": "air5"}],
+            }
+        ]
+    }
+    strings = script.flatten_strings(payload)
+    assert "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit" in strings
+    assert "air5" in strings
+
+
+def test_air5_model_check_adds_authorization_header(monkeypatch) -> None:
+    script = load_script("bin/check-air5-model.py")
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return b'{"data":[]}'
+
+    def fake_urlopen(req, timeout):
+        captured["auth"] = req.headers.get("Authorization")
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(script.urllib.request, "urlopen", fake_urlopen)
+    assert script.fetch_json("https://example.test/v1/models", 3, "secret") == {"data": []}
+    assert captured == {"auth": "Bearer secret", "timeout": 3}

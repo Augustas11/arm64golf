@@ -53,7 +53,9 @@ project, not ARM64 baselines and not proof of an ARM64 optimum.
 
 ### 1.4 Goals
 
-- Build a clean, standalone public repository for ARM64 routine search.
+- Build a clean, standalone repository for ARM64 routine search. The test phase
+  uses a private GitHub repo; public release happens only after explicit launch
+  approval.
 - Verify ARM64 candidates locally and deterministically before scoring them.
 - Attribute every verified candidate to the exact model and provider that
   produced it.
