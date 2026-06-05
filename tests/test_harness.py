@@ -352,6 +352,47 @@ def test_summarize_run_reports_pending_without_responses(tmp_path: Path) -> None
     assert script.verdict(summary) == "PENDING"
 
 
+def test_write_report_renders_pending_state(tmp_path: Path) -> None:
+    script = load_script("bin/write-report.py")
+    store = Store(tmp_path / "db.sqlite")
+    summary = store.run_summary("sort3-arm64")
+    store.close()
+    report = script.render_report("sort3-arm64", summary)
+    assert "Status: pending" in report
+    assert "No PASS/FAIL verdict yet" in report
+    assert "public launch is intentionally deferred" in report
+
+
+def test_write_report_renders_pass_b_evidence(tmp_path: Path) -> None:
+    script = load_script("bin/write-report.py")
+    db_path = tmp_path / "db.sqlite"
+    store = Store(db_path)
+    for i in range(3):
+        attempt_id = store.record_attempt("sort3-arm64", "template", "ok", requested_n=1, response_count=1)
+        store.record_candidate(
+            candidate_hash=f"hash{i}",
+            problem_id="sort3-arm64",
+            source="cmp x0, x1\n",
+            score=17 if i == 2 else 18,
+            verified=i == 2,
+            model_id="model",
+            provider_id="air5",
+        )
+        store.record_evaluation(
+            attempt_id=attempt_id,
+            problem_id="sort3-arm64",
+            candidate_hash=f"hash{i}",
+            score=17 if i == 2 else 18,
+            verified=i == 2,
+        )
+    summary = store.run_summary("sort3-arm64")
+    store.close()
+    report = script.render_report("sort3-arm64", summary)
+    assert "Status: pass-b" in report
+    assert "Current derived verdict: PASS-B." in report
+    assert "- first 17-instruction response: 3" in report
+
+
 def test_air5_model_check_flattens_unknown_model_schema() -> None:
     script = load_script("bin/check-air5-model.py")
     payload = {

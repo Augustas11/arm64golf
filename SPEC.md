@@ -531,24 +531,25 @@ KISS deployment for v0.1:
 There is no live API in v0.1.
 
 `bin/summarize-run.py` reads the SQLite store and emits a deterministic
-summary/verdict from the recorded attempts and evaluations. PASS-C from a
-verified 16-instruction candidate is automatic; PASS-C from structural
-diversity remains a manual review item.
+summary/verdict from the recorded attempts and evaluations. `bin/write-report.py`
+uses the same evidence to regenerate `REPORT.md`. PASS-C from a verified
+16-instruction candidate is automatic; PASS-C from structural diversity remains
+a manual review item.
 
 ## 9. Success Criteria
 
 ### 9.1 PASS-A: Translation Works
 
-Within 200 inference calls, the harness produces at least one syntactically
-valid ARM64 assembly candidate that passes the sandboxed verifier on all
-1000+ test inputs.
+Within 200 evaluated candidate responses, the harness produces at least one
+syntactically valid ARM64 assembly candidate that passes the sandboxed verifier
+on all 1000+ test inputs.
 
 This proves Qwen2.5-Coder-7B can generate correct ARM64 at all in this setup.
 
 ### 9.2 PASS-B: Rediscovery
 
-Within 10,000 inference calls, the harness finds a 17-instruction ARM64
-`sort3` candidate that passes verification.
+Within 10,000 evaluated candidate responses, the harness finds a
+17-instruction ARM64 `sort3` candidate that passes verification.
 
 This matches AlphaDev's x86 `sort3` instruction count on ARM64. It does not
 prove ARM64 optimality unless separately established.
@@ -565,8 +566,8 @@ verified candidates.
 
 ### 9.4 FAIL
 
-If none of PASS-A, PASS-B, or PASS-C is reached within 10,000 inference calls,
-the project reports FAIL.
+If none of PASS-A, PASS-B, or PASS-C is reached within 10,000 evaluated
+candidate responses, the project reports FAIL.
 
 FAIL is useful when documented clearly. `REPORT.md` must identify observed
 failure modes such as invalid assembly, wrong ABI assumptions, trivial
@@ -577,9 +578,9 @@ provider/model availability problems.
 
 `REPORT.md` is written at the end of the run regardless of outcome.
 
-It includes final verdict, inference-call count, best candidate score, best
-candidate hash, receipt links for verified candidates, failure-mode summary
-when applicable, limits, and next steps.
+It includes final verdict, candidate-response count, best candidate score,
+best candidate hash, receipt links for verified candidates, failure-mode
+summary when applicable, limits, and next steps.
 
 ## 10. Out Of Scope
 
