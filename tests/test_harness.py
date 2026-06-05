@@ -46,6 +46,45 @@ def test_validate_sort3_module_rejects_too_few_tests(tmp_path: Path) -> None:
     assert any("at least 1000 cases" in error for error in errors)
 
 
+def test_validate_harness_smoke_accepts_successful_loop(tmp_path: Path, monkeypatch) -> None:
+    script = load_script("bin/validate-harness-smoke.py")
+    leaderboard = tmp_path / "leaderboard.json"
+    receipts = tmp_path / "receipts"
+    receipts.mkdir()
+    leaderboard.write_text(
+        json.dumps(
+            {
+                "problem_id": "sort3-arm64",
+                "attempt_count": 1,
+                "requested_candidate_count": 1,
+                "candidate_response_count": 1,
+                "run_summary": {
+                    "evaluation_count": 1,
+                    "verified_evaluation_count": 1,
+                    "failed_evaluation_count": 0,
+                    "evaluation_error_count": 0,
+                    "best_verified_score": 18,
+                    "first_verified_response": 1,
+                },
+                "rows": [
+                    {
+                        "score": 18,
+                        "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+                        "provider_id": "air5",
+                        "receipt_signature": "signature",
+                    }
+                ],
+            }
+        )
+    )
+
+    monkeypatch.setattr(script.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(script, "run_loop_smoke", lambda workdir: (0, "", leaderboard, receipts))
+    monkeypatch.setattr(script, "run", lambda cmd, timeout_s=60.0: (0, '{"ok": true, "errors": []}'))
+
+    assert script.validate() == []
+
+
 def test_parse_chat_response_returns_all_choices() -> None:
     raw = b'{"choices":[{"message":{"content":"cmp x0, x1"}},{"message":{"content":"ret"}}]}'
     assert parse_chat_response(raw) == ["cmp x0, x1", "ret"]
@@ -475,6 +514,7 @@ def test_write_report_renders_pending_state(tmp_path: Path) -> None:
     assert "No PASS/FAIL verdict yet" in report
     assert "public launch is intentionally deferred" in report
     assert "bin/ready-live-run.py" in report
+    assert "bin/validate-harness-smoke.py" in report
     assert "bin/validate-receipts.py" in report
 
 
@@ -653,12 +693,26 @@ def test_deliverable_audit_uses_sort3_contract_validator(monkeypatch) -> None:
     script = load_script("bin/audit-deliverables.py")
     monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: False)
+    monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["sort3_module"].status == "missing"
     assert "contract validates" in items["sort3_module"].summary
+
+
+def test_deliverable_audit_uses_harness_smoke_validator(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+    monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "harness_smoke_ok", lambda: False)
+    monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+
+    items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
+    assert items["harness"].status == "missing"
+    assert "offline harness smoke passes" in items["harness"].summary
 
 
 def test_validate_web_accepts_current_static_assets() -> None:

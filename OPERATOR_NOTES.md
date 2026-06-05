@@ -62,22 +62,26 @@ Before starting a real search:
 3. run `bin/verify-receipt.py` against the seed receipt
 4. run `bin/audit-deliverables.py --json` to confirm local artifacts are
    complete and only approved pending/deferred gates remain
-5. run `bin/validate-receipts.py --json` to confirm every leaderboard row is
+5. run `bin/validate-harness-smoke.py --json` to confirm mock inference,
+   sandbox verification, scoring, receipt signing, SQLite persistence, and
+   leaderboard export work end to end
+6. run `bin/validate-receipts.py --json` to confirm every leaderboard row is
    backed by a matching signed receipt
-6. run `bin/validate-web.py --json` to confirm the static leaderboard files
+7. run `bin/validate-web.py --json` to confirm the static leaderboard files
    match the JSON contract before preview/deploy
-7. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
+8. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
    gate; it should report no blockers before a live search
-8. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
+9. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
    intended provider id are visible; use `--url https://api.streamvc.live/v1/models`
    with `MACPROVIDER_API_KEY` if the coordinator endpoint is unavailable
-9. run local preflight and sandbox tests on the operator machine
-10. run the harness with a small round count before a 10,000-call run
+10. run local preflight and sandbox tests on the operator machine
+11. run the harness with a small round count before a 10,000-call run
 
 Example:
 
 ```bash
 bin/audit-deliverables.py --json
+bin/validate-harness-smoke.py --json
 bin/validate-receipts.py --json
 bin/validate-web.py --json
 bin/ready-live-run.py --run-tests --json
@@ -97,6 +101,11 @@ GitHub API, use `bin/audit-deliverables.py --offline --json` for the local
 artifact audit and run `bin/preflight.py --run-tests` or `gh repo view
 Augustas11/arm64golf --json visibility` separately to prove the repo is still
 private.
+
+If the local command sandbox cannot apply macOS `sandbox-exec` profiles, run
+`bin/validate-harness-smoke.py --json`, `sandbox/runner.py`, and
+`bin/audit-deliverables.py --json` from the operator shell. The harness smoke is
+supposed to prove the real sandbox path, not a Python-only fallback.
 
 `bin/ready-live-run.py` is the aggregate gate, but it is intentionally
 conservative: it reports blockers until `MACPROVIDER_API_KEY`, GitHub private

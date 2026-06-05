@@ -118,19 +118,8 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
         ),
         AuditItem(
             "harness",
-            "complete"
-            if all(
-                file_exists(path)
-                for path in [
-                    "harness/loop.py",
-                    "harness/inference.py",
-                    "harness/prompts.py",
-                    "harness/store.py",
-                    "harness/attest.py",
-                ]
-            )
-            else "missing",
-            "search harness, inference client, store, prompts, and attestation code are present",
+            "complete" if harness_smoke_ok() else "missing",
+            "offline harness smoke passes: mock inference, verifier, score, receipt, SQLite, and leaderboard export",
         ),
         AuditItem(
             "sandbox",
@@ -220,6 +209,11 @@ def receipt_validator_ok() -> bool:
 
 def sort3_module_validator_ok() -> bool:
     code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-sort3-module.py"), "--json"])
+    return code == 0
+
+
+def harness_smoke_ok() -> bool:
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-harness-smoke.py"), "--json"], timeout_s=90)
     return code == 0
 
 

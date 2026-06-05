@@ -105,6 +105,7 @@ def render_report(problem_id: str, summary: dict[str, object]) -> str:
             "- The native runner enforces the v0.1 candidate caps inside the generated verifier executable: 100 ms wall-clock by default and 256 MB address/data memory by default.",
             "- Seed receipt exists at `receipts/726c3e4c49b5.json` and is verifiable with `bin/verify-receipt.py`.",
             "- Static leaderboard contains the seed baseline row and run-summary counters.",
+            "- `bin/validate-harness-smoke.py` proves the offline harness path with mock inference, sandbox verification, scoring, receipt signing, SQLite persistence, and leaderboard export.",
             "- `bin/validate-receipts.py` verifies leaderboard rows against signed receipt payloads.",
             "- `bin/validate-web.py` verifies the static leaderboard HTML/JSON contract.",
             "- `bin/audit-deliverables.py` records local BUILD_PROMPT deliverable status.",
