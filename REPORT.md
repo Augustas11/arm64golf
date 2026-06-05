@@ -4,9 +4,9 @@ Status: pass-c
 
 ## Network configuration this canary depended on
 
-The v0.3 canary and the v0.3 post-canary csel_hint probe both ran
-against production MacProvider at api.streamvc.live, with the
-following non-default config in effect:
+The v0.3 canary and the v0.3 post-canary probes (csel_hint,
+dual_example) all ran against production MacProvider at
+api.streamvc.live, with the following non-default config in effect:
 
 - `gateway.timeouts.coordinator_header_timeout_seconds: 60` (default: 10;
   bumped 2026-06-05 because a 10s ceiling truncated any non-streaming
@@ -39,10 +39,8 @@ threshold. Three readings need to be kept distinct:
   routines (`47f0dd8d0a24`, `f41b055a1965`, `17e628abfc2b`).
 
 - **PASS-B (≤17 instructions verified)** — cleared by the v0.3
-  post-canary probe with the `csel_hint` template:
-  `57b2aa236342`, 12 instructions, signed receipt under
-  `receipts/57b2aa236342.json`. The routine is three cmp + csel +
-  csel + mov blocks (one per adjacent-pair comparator in a
+  post-canary `csel_hint` probe: `57b2aa236342`, 12 instructions,
+  three cmp + csel + csel + mov blocks (one per comparator in a
   sort-three network).
 
 - **PASS-C (≤16 instructions verified)** — same candidate clears
@@ -55,17 +53,59 @@ pattern-matched the example rather than discovering the structure
 from scratch. The receipt is real (the routine passes all 1200
 deterministic test cases through the sandboxed runner) and the
 leaderboard claim is honest, but the credit for the compression
-goes to the prompt engineer, not to model search. A more
-substantive next probe is `dual_example` or `pass_b_target` (which
-do not hand over the csel pattern) — if either finds a ≤17 routine
-the model is actually doing search; if neither does, the model is
-fitting the example, and ≤11 needs different prompt surgery.
+goes to the prompt engineer, not to model search.
 
-Failure modes are unchanged from v0.1 / v0.2 / v0.3 canary: `case 2
-failed` (already-ascending input, 18x), `case 1 failed` (all-equal
-triple, 15x), and ISA mnemonic errors (`eors`, `eorr`, `teqz`,
-`or`). The `failed_context` block continues to surface these
-inline; the model continues to occasionally emit them anyway.
+## Search Discovery — what the dual_example probe found
+
+Hypothesis going in: if `csel_hint` worked because the prompt handed
+over the pattern, then a prompt that withholds the pattern (but
+still surfaces the goal — "verified routines at 18 and 24 exist;
+find something denser") would tell us whether Qwen2.5-Coder-7B-4bit
+can search for structure on its own.
+
+Probe: 200-cap, `--template dual_example`, `--no-stop-on-verdict`,
+same n=8 fan-out, same temp=0.7 / top_p=0.95 sampling as the
+canary. Result:
+
+- `best_verified_score` stayed at 12 (carried over from `csel_hint`).
+  Zero verified candidates below the handed-over floor.
+- One new verified 12-instruction routine (`b4d6f989140e`) appeared
+  — the previous csel routine with `lt` swapped for `le`. A
+  trivial micro-mutation of what the model saw as "Current best:"
+  in the prompt, not a new structure.
+- One new verified 16-instruction routine (`9fa2d622fdae`) — the
+  same csel block tiled **four** times instead of three, i.e. a
+  redundant compare-swap. Correct but strictly worse than the
+  3-tile floor.
+- `case 1 failed` (all-equal triple) spiked to 68x in this probe,
+  `case 2 failed` (already-ascending) to 37x. Vs the v0.3 canary's
+  15x and 18x respectively. Without the csel pattern in the prompt,
+  the model regressed to unconditional-swap routines that fail the
+  edge-case sentinels — i.e. `csel_hint` was acting as training
+  wheels for both compression *and* edge-case correctness, not
+  just compression.
+
+**Reading:** for Qwen2.5-Coder-7B-Instruct-4bit on air5 under the
+v0.3 prompt family, the instruction-count floor is **12, reachable
+only when the prompt names the csel pattern explicitly**. Removing
+the pattern doesn't unlock discovery — the model produces more
+failed routines plus micro-mutations of whatever the leaderboard
+already shows. Search-discovery on this model is not happening at
+this prompt sophistication; the binding constraint is the prompt
+plus the model, not the sample size.
+
+Caveats on the reading:
+
+- One probe per prompt, n=8 fan-out at temp=0.7/top_p=0.95. A
+  sampling sweep (temp ∈ {0.3, 0.5, 0.9}) has not been run yet.
+  Discovery is sensitive to temperature; the 7B-floor claim is
+  contingent on the current sampling settings.
+- 7B-4bit is on the small end of modern coding models. The
+  marketplace test ("same probe against a different provider /
+  model on MacProvider") would distinguish model-capability from
+  prompt-engineering as the binding constraint. That measurement
+  is exactly the arm64golf product story and is the next obvious
+  step once a second (provider, model) is available.
 
 ## Verdict
 
@@ -74,30 +114,30 @@ Current derived verdict: PASS-C.
 ## Run Evidence
 
 - problem: `sort3-arm64`
-- attempts: 32
-- requested candidates: 256
-- candidate responses: 115
-- evaluated responses: 115
-- verified evaluations: 55
-- failed evaluations: 60
-- evaluations with error text: 60
+- attempts: 62
+- requested candidates: 496
+- candidate responses: 208
+- evaluated responses: 208
+- verified evaluations: 76
+- failed evaluations: 132
+- evaluations with error text: 132
 - best verified score: 12
 - first verified response: 2
 - first 17-instruction response: 115
 - first 16-instruction response: 115
-- near-best verified candidates: 1
+- near-best verified candidates: 2
 - near-best unique opcode structures: 1
 
 ## Structural Diversity Evidence
 
-- `f13bac4e5383f523`: 1 candidate(s), representative `57b2aa236342`, score 12, 12 instructions: `cmp csel csel mov cmp csel csel mov cmp csel csel mov`
+- `f13bac4e5383f523`: 2 candidate(s), representative `57b2aa236342`, score 12, 12 instructions: `cmp csel csel mov cmp csel csel mov cmp csel csel mov`
 
 This evidence is for manual PASS-C review only; automatic PASS-C still requires a verified 16-instruction candidate.
 
 ## Top Evaluation Errors
 
-- 18x case 2 failed
-- 15x case 1 failed
+- 68x case 1 failed
+- 37x case 2 failed
 - 1x /private/tmp/arm64golf-sandbox/run-2478qtx3/candidate.s:7:5: error: unrecognized instruction mnemonic
     teqz x3, x3
     ^
