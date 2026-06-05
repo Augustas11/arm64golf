@@ -18,6 +18,7 @@ from harness.verdict import verdict
 def render_markdown(problem_id: str, summary: dict[str, object]) -> str:
     status = verdict(summary)
     top_errors = summary.get("top_evaluation_errors") or []
+    near_best_structures = summary.get("near_best_structures") or []
     lines = [
         f"# arm64golf run summary: {problem_id}",
         "",
@@ -43,6 +44,24 @@ def render_markdown(problem_id: str, summary: dict[str, object]) -> str:
         "PASS/FAIL thresholds use evaluated candidate-response ordinals. PASS-C here means a verified 16-instruction candidate; structural-diversity PASS-C still requires manual review.",
         "",
     ]
+    if near_best_structures:
+        lines.extend(
+            [
+                "## Structural Diversity",
+                "",
+                f"- near-best verified candidates: {summary['near_best_candidate_count']}",
+                f"- near-best unique opcode structures: {summary['near_best_unique_structure_count']}",
+                "",
+            ]
+        )
+        for item in near_best_structures:
+            sequence = " ".join(item["opcode_sequence"])
+            lines.append(
+                f"- {item['fingerprint']} "
+                f"({item['candidate_count']} candidate(s), representative {item['representative_hash_short']}, "
+                f"score {item['representative_score']}, {item['instruction_count']} instructions): `{sequence}`"
+            )
+        lines.append("")
     if top_errors:
         lines.extend(["## Top Evaluation Errors", ""])
         for item in top_errors:

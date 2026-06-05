@@ -27,6 +27,37 @@
     "first_16_response": null,
     "first_17_response": null,
     "first_verified_response": null,
+    "near_best_candidate_count": 1,
+    "near_best_structures": [
+      {
+        "candidate_count": 1,
+        "fingerprint": "08c76e7641c069f2",
+        "instruction_count": 18,
+        "opcode_sequence": [
+          "cmp",
+          "csetm",
+          "eor",
+          "and",
+          "eor",
+          "eor",
+          "cmp",
+          "csetm",
+          "eor",
+          "and",
+          "eor",
+          "eor",
+          "cmp",
+          "csetm",
+          "eor",
+          "and",
+          "eor",
+          "eor"
+        ],
+        "representative_hash_short": "726c3e4c49b5",
+        "representative_score": 18
+      }
+    ],
+    "near_best_unique_structure_count": 1,
     "requested_candidate_count": 0,
     "top_evaluation_errors": [],
     "verified_evaluation_count": 0

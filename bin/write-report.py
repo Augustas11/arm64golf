@@ -17,6 +17,7 @@ from harness.verdict import verdict
 def render_report(problem_id: str, summary: dict[str, object]) -> str:
     status = verdict(summary)
     top_errors = summary.get("top_evaluation_errors") or []
+    near_best_structures = summary.get("near_best_structures") or []
     pending_live = status == "PENDING" and int(summary["candidate_response_count"] or 0) == 0
 
     lines = [
@@ -53,9 +54,28 @@ def render_report(problem_id: str, summary: dict[str, object]) -> str:
             f"- first verified response: {summary['first_verified_response'] or 'none'}",
             f"- first 17-instruction response: {summary['first_17_response'] or 'none'}",
             f"- first 16-instruction response: {summary['first_16_response'] or 'none'}",
+            f"- near-best verified candidates: {summary['near_best_candidate_count']}",
+            f"- near-best unique opcode structures: {summary['near_best_unique_structure_count']}",
             "",
         ]
     )
+
+    if near_best_structures:
+        lines.extend(["## Structural Diversity Evidence", ""])
+        for item in near_best_structures:
+            sequence = " ".join(item["opcode_sequence"])
+            lines.append(
+                f"- `{item['fingerprint']}`: {item['candidate_count']} candidate(s), "
+                f"representative `{item['representative_hash_short']}`, score {item['representative_score']}, "
+                f"{item['instruction_count']} instructions: `{sequence}`"
+            )
+        lines.extend(
+            [
+                "",
+                "This evidence is for manual PASS-C review only; automatic PASS-C still requires a verified 16-instruction candidate.",
+                "",
+            ]
+        )
 
     if top_errors:
         lines.extend(["## Top Evaluation Errors", ""])
@@ -76,6 +96,7 @@ def render_report(problem_id: str, summary: dict[str, object]) -> str:
             "- `bin/summarize-run.py` and `bin/write-report.py` derive run status from the SQLite attempt/evaluation ledger.",
             "- The harness enforces `--max-candidate-responses` for live runs and continues past PASS-A by default so the same run can still probe for PASS-B/PASS-C.",
             "- `bin/preflight.py` and `bin/check-air5-model.py` exist for reproducible operator readiness and model visibility checks.",
+            "- `bin/preflight.py` also verifies the GitHub repo remains private during the test phase unless `--allow-public-launch` is explicitly used after launch approval.",
             "",
             "## Pending Before PASS/FAIL Run",
             "",

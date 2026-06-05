@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,27 @@ CREATE TABLE IF NOT EXISTS evaluations (
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 """
+
+
+def instruction_mnemonics(source: str) -> list[str]:
+    mnemonics: list[str] = []
+    for raw_line in source.splitlines():
+        line = raw_line.split("//", 1)[0].strip()
+        if not line or line.startswith("."):
+            continue
+        if ":" in line:
+            label, rest = line.split(":", 1)
+            if label.strip() and not label.strip().startswith("."):
+                line = rest.strip()
+        if not line or line.startswith("."):
+            continue
+        mnemonics.append(line.split(None, 1)[0].lower())
+    return mnemonics
+
+
+def structural_fingerprint(source: str) -> str:
+    sequence = " ".join(instruction_mnemonics(source))
+    return sha256(sequence.encode("utf-8")).hexdigest()[:16]
 
 
 class Store:
@@ -174,6 +196,7 @@ class Store:
         first_17 = self._first_verified_eval(problem_id, max_score=17)
         first_16 = self._first_verified_eval(problem_id, max_score=16)
         best = self.best_candidate(problem_id)
+        diversity = self.structural_diversity(problem_id)
         return {
             **stats,
             "evaluation_count": int(eval_count),
@@ -185,6 +208,9 @@ class Store:
             "first_verified_response": self._eval_ordinal(problem_id, first_verified),
             "first_17_response": self._eval_ordinal(problem_id, first_17),
             "first_16_response": self._eval_ordinal(problem_id, first_16),
+            "near_best_candidate_count": diversity["candidate_count"],
+            "near_best_unique_structure_count": diversity["unique_structure_count"],
+            "near_best_structures": diversity["structures"],
         }
 
     def evaluation_error_count(self, problem_id: str) -> int:
@@ -246,6 +272,52 @@ class Store:
             (problem_id,),
         )
         return cur.fetchone()
+
+    def structural_diversity(self, problem_id: str, near_best_delta: int = 1, limit: int = 10) -> dict[str, Any]:
+        best = self.best_candidate(problem_id)
+        if best is None:
+            return {
+                "candidate_count": 0,
+                "unique_structure_count": 0,
+                "structures": [],
+            }
+
+        max_score = int(best["score"]) + near_best_delta
+        cur = self.db.execute(
+            """
+            SELECT candidate_hash, score, source
+            FROM candidates
+            WHERE problem_id = ? AND verified = 1 AND score <= ?
+            ORDER BY score ASC, discovered_at ASC, candidate_hash ASC
+            """,
+            (problem_id, max_score),
+        )
+        structures: dict[str, dict[str, Any]] = {}
+        candidate_count = 0
+        for row in cur.fetchall():
+            candidate_count += 1
+            mnemonics = instruction_mnemonics(row["source"])
+            fingerprint = structural_fingerprint(row["source"])
+            if fingerprint not in structures:
+                structures[fingerprint] = {
+                    "fingerprint": fingerprint,
+                    "candidate_count": 0,
+                    "representative_hash_short": row["candidate_hash"][:12],
+                    "representative_score": int(row["score"]),
+                    "instruction_count": len(mnemonics),
+                    "opcode_sequence": mnemonics,
+                }
+            structures[fingerprint]["candidate_count"] += 1
+
+        ordered = sorted(
+            structures.values(),
+            key=lambda item: (int(item["representative_score"]), str(item["fingerprint"])),
+        )
+        return {
+            "candidate_count": candidate_count,
+            "unique_structure_count": len(structures),
+            "structures": ordered[:limit],
+        }
 
     def leaderboard(self, problem_id: str) -> list[dict[str, Any]]:
         cur = self.db.execute(

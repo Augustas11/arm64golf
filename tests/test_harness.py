@@ -127,6 +127,35 @@ def test_store_preserves_first_candidate_discovery_and_receipt(tmp_path: Path) -
     store.close()
 
 
+def test_store_summarizes_near_best_structural_diversity(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    candidates = [
+        ("hash-best", 17, "cmp x0, x1\ncsel x0, x0, x1, le\n"),
+        ("hash-near", 18, "cmp x0, x1\ncsetm x3, gt\neor x4, x0, x1\n"),
+        ("hash-far", 20, "mov x0, x0\n"),
+    ]
+    for candidate_hash, score, source in candidates:
+        store.record_candidate(
+            candidate_hash=candidate_hash,
+            problem_id="sort3-arm64",
+            source=source,
+            score=score,
+            verified=True,
+            model_id="model",
+            provider_id="air5",
+        )
+
+    summary = store.run_summary("sort3-arm64")
+    store.close()
+
+    assert summary["near_best_candidate_count"] == 2
+    assert summary["near_best_unique_structure_count"] == 2
+    structures = summary["near_best_structures"]
+    assert {item["representative_hash_short"] for item in structures} == {"hash-best", "hash-near"}
+    assert [item["representative_score"] for item in structures] == [17, 18]
+    assert any(item["opcode_sequence"] == ["cmp", "csel"] for item in structures)
+
+
 def test_receipt_round_trip(tmp_path: Path) -> None:
     payload = {
         "problem_id": "sort3-arm64",
@@ -459,6 +488,33 @@ def test_write_report_renders_pass_b_evidence(tmp_path: Path) -> None:
     assert "Status: pass-b" in report
     assert "Current derived verdict: PASS-B." in report
     assert "- first 17-instruction response: 3" in report
+    assert "- near-best unique opcode structures: 1" in report
+
+
+def test_write_report_renders_structural_diversity_evidence(tmp_path: Path) -> None:
+    script = load_script("bin/write-report.py")
+    store = Store(tmp_path / "db.sqlite")
+    for candidate_hash, score, source in [
+        ("hash-best", 17, "cmp x0, x1\ncsel x0, x0, x1, le\n"),
+        ("hash-near", 18, "cmp x0, x1\ncsetm x3, gt\neor x4, x0, x1\n"),
+    ]:
+        store.record_candidate(
+            candidate_hash=candidate_hash,
+            problem_id="sort3-arm64",
+            source=source,
+            score=score,
+            verified=True,
+            model_id="model",
+            provider_id="air5",
+        )
+    summary = store.run_summary("sort3-arm64")
+    store.close()
+
+    report = script.render_report("sort3-arm64", summary)
+    assert "## Structural Diversity Evidence" in report
+    assert "manual PASS-C review only" in report
+    assert "`cmp csel`" in report
+    assert "`cmp csetm eor`" in report
 
 
 def test_air5_model_check_flattens_unknown_model_schema() -> None:

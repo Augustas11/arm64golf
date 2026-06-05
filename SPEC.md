@@ -502,7 +502,9 @@ Summary fields:
   verified evaluations, best verified score, and first response ordinals for
   verified, 17-instruction, and 16-instruction candidates. It also includes
   failed evaluation count, error-bearing evaluation count, and top grouped
-  evaluation errors for FAIL-mode analysis.
+  evaluation errors for FAIL-mode analysis. For manual PASS-C review, it
+  includes near-best verified candidate count, near-best unique opcode
+  structure count, and representative opcode-sequence fingerprints.
 
 PASS/FAIL reporting uses `candidate_response_count` for the "within 200" and
 "within 10,000" thresholds, with `requested_candidate_count` retained to show
@@ -534,7 +536,8 @@ There is no live API in v0.1.
 summary/verdict from the recorded attempts and evaluations. `bin/write-report.py`
 uses the same evidence to regenerate `REPORT.md`. PASS-C from a verified
 16-instruction candidate is automatic; PASS-C from structural diversity remains
-a manual review item.
+a manual review item backed by the near-best structural fingerprints in
+`run_summary`.
 
 ## 9. Success Criteria
 

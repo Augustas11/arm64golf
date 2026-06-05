@@ -20,6 +20,14 @@ No PASS/FAIL verdict yet. The search has not started because the air5 operator h
 - first verified response: none
 - first 17-instruction response: none
 - first 16-instruction response: none
+- near-best verified candidates: 1
+- near-best unique opcode structures: 1
+
+## Structural Diversity Evidence
+
+- `08c76e7641c069f2`: 1 candidate(s), representative `726c3e4c49b5`, score 18, 18 instructions: `cmp csetm eor and eor eor cmp csetm eor and eor eor cmp csetm eor and eor eor`
+
+This evidence is for manual PASS-C review only; automatic PASS-C still requires a verified 16-instruction candidate.
 
 ## Current Evidence
 
