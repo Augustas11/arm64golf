@@ -85,6 +85,32 @@ def test_validate_harness_smoke_accepts_successful_loop(tmp_path: Path, monkeypa
     assert script.validate() == []
 
 
+def test_validate_sandbox_accepts_successful_contract(monkeypatch) -> None:
+    script = load_script("bin/validate-sandbox.py")
+    monkeypatch.setattr(script.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def fake_run(cmd, timeout_s=60.0):
+        if cmd == [script.python_executable(), "-m", "pytest", "-q", str(script.TESTS)]:
+            return 0, "9 passed"
+        if cmd == [script.python_executable(), str(script.RUNNER)]:
+            return (
+                0,
+                json.dumps(
+                    {
+                        "ok": True,
+                        "verified": True,
+                        "score": 18,
+                        "timeout_ms": 100,
+                        "memory_limit_mb": 256,
+                    }
+                ),
+            )
+        raise AssertionError(cmd)
+
+    monkeypatch.setattr(script, "run", fake_run)
+    assert script.validate() == []
+
+
 def test_parse_chat_response_returns_all_choices() -> None:
     raw = b'{"choices":[{"message":{"content":"cmp x0, x1"}},{"message":{"content":"ret"}}]}'
     assert parse_chat_response(raw) == ["cmp x0, x1", "ret"]
@@ -515,6 +541,7 @@ def test_write_report_renders_pending_state(tmp_path: Path) -> None:
     assert "public launch is intentionally deferred" in report
     assert "bin/ready-live-run.py" in report
     assert "bin/validate-harness-smoke.py" in report
+    assert "bin/validate-sandbox.py" in report
     assert "bin/validate-receipts.py" in report
 
 
@@ -694,6 +721,7 @@ def test_deliverable_audit_uses_sort3_contract_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: False)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
 
@@ -707,12 +735,27 @@ def test_deliverable_audit_uses_harness_smoke_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: False)
+    monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["harness"].status == "missing"
     assert "offline harness smoke passes" in items["harness"].summary
+
+
+def test_deliverable_audit_uses_sandbox_validator(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+    monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "sandbox_validator_ok", lambda: False)
+    monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+
+    items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
+    assert items["sandbox"].status == "missing"
+    assert "sandbox contract validates" in items["sandbox"].summary
 
 
 def test_validate_web_accepts_current_static_assets() -> None:

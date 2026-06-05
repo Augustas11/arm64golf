@@ -123,10 +123,8 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
         ),
         AuditItem(
             "sandbox",
-            "complete"
-            if all(file_exists(path) for path in ["sandbox/profile.sb", "sandbox/runner.py", "sandbox/tests/test_sandbox.py"])
-            else "missing",
-            "sandbox profile, native runner, and escape-vector tests are present",
+            "complete" if sandbox_validator_ok() else "missing",
+            "sandbox contract validates: deny profile, native runner, and escape-vector pytest suite",
         ),
         AuditItem(
             "receipts",
@@ -214,6 +212,11 @@ def sort3_module_validator_ok() -> bool:
 
 def harness_smoke_ok() -> bool:
     code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-harness-smoke.py"), "--json"], timeout_s=90)
+    return code == 0
+
+
+def sandbox_validator_ok() -> bool:
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-sandbox.py"), "--json"], timeout_s=120)
     return code == 0
 
 

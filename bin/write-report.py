@@ -106,6 +106,7 @@ def render_report(problem_id: str, summary: dict[str, object]) -> str:
             "- Seed receipt exists at `receipts/726c3e4c49b5.json` and is verifiable with `bin/verify-receipt.py`.",
             "- Static leaderboard contains the seed baseline row and run-summary counters.",
             "- `bin/validate-harness-smoke.py` proves the offline harness path with mock inference, sandbox verification, scoring, receipt signing, SQLite persistence, and leaderboard export.",
+            "- `bin/validate-sandbox.py` proves the deny-profile contract, native runner, escape-vector pytest suite, timeout, and memory-cap reporting.",
             "- `bin/validate-receipts.py` verifies leaderboard rows against signed receipt payloads.",
             "- `bin/validate-web.py` verifies the static leaderboard HTML/JSON contract.",
             "- `bin/audit-deliverables.py` records local BUILD_PROMPT deliverable status.",

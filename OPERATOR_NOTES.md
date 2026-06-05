@@ -65,23 +65,26 @@ Before starting a real search:
 5. run `bin/validate-harness-smoke.py --json` to confirm mock inference,
    sandbox verification, scoring, receipt signing, SQLite persistence, and
    leaderboard export work end to end
-6. run `bin/validate-receipts.py --json` to confirm every leaderboard row is
+6. run `bin/validate-sandbox.py --json` to confirm the sandbox profile,
+   native runner, escape-vector blocks, timeout, and memory-cap reporting
+7. run `bin/validate-receipts.py --json` to confirm every leaderboard row is
    backed by a matching signed receipt
-7. run `bin/validate-web.py --json` to confirm the static leaderboard files
+8. run `bin/validate-web.py --json` to confirm the static leaderboard files
    match the JSON contract before preview/deploy
-8. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
+9. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
    gate; it should report no blockers before a live search
-9. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
+10. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
    intended provider id are visible; use `--url https://api.streamvc.live/v1/models`
    with `MACPROVIDER_API_KEY` if the coordinator endpoint is unavailable
-10. run local preflight and sandbox tests on the operator machine
-11. run the harness with a small round count before a 10,000-call run
+11. run local preflight and sandbox tests on the operator machine
+12. run the harness with a small round count before a 10,000-call run
 
 Example:
 
 ```bash
 bin/audit-deliverables.py --json
 bin/validate-harness-smoke.py --json
+bin/validate-sandbox.py --json
 bin/validate-receipts.py --json
 bin/validate-web.py --json
 bin/ready-live-run.py --run-tests --json
@@ -103,9 +106,10 @@ Augustas11/arm64golf --json visibility` separately to prove the repo is still
 private.
 
 If the local command sandbox cannot apply macOS `sandbox-exec` profiles, run
-`bin/validate-harness-smoke.py --json`, `sandbox/runner.py`, and
-`bin/audit-deliverables.py --json` from the operator shell. The harness smoke is
-supposed to prove the real sandbox path, not a Python-only fallback.
+`bin/validate-harness-smoke.py --json`, `bin/validate-sandbox.py --json`,
+`sandbox/runner.py`, and `bin/audit-deliverables.py --json` from the operator
+shell. These gates are supposed to prove the real sandbox path, not a
+Python-only fallback.
 
 `bin/ready-live-run.py` is the aggregate gate, but it is intentionally
 conservative: it reports blockers until `MACPROVIDER_API_KEY`, GitHub private
