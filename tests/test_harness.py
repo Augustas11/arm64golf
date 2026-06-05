@@ -832,6 +832,8 @@ def test_air5_model_check_reports_owner_actions_for_missing_model_and_provider()
     actions = script.operator_actions(False, False, ["air5", "m4"])
     assert any("download/prewarm" in action for action in actions)
     assert any("provider id mapping" in action for action in actions)
+    assert all("Report to Augustas for air5-owner coordination" in action for action in actions)
+    assert not any(action.startswith("Ask the air5 owner") for action in actions)
 
 
 def test_preflight_parses_github_origin_urls() -> None:

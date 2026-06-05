@@ -41,12 +41,14 @@ def operator_actions(model_ok: bool, provider_ok: bool, provider_candidates: lis
     actions: list[str] = []
     if not model_ok:
         actions.append(
-            "Ask the air5 owner to download/prewarm mlx-community/Qwen2.5-Coder-7B-Instruct-4bit "
-            "and configure phase3-binary to serve it for arm64golf."
+            "Report to Augustas for air5-owner coordination: download/prewarm "
+            "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit and configure phase3-binary "
+            "to serve it for arm64golf."
         )
     if not provider_ok:
         actions.append(
-            "Ask the air5 owner to reconnect the provider or document the live provider id mapping; "
+            "Report to Augustas for air5-owner coordination: reconnect the provider or "
+            "document the live provider id mapping; "
             f"expected one of: {', '.join(provider_candidates)}."
         )
     return actions
