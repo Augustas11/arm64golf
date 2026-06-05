@@ -427,6 +427,79 @@ def test_mock_response_loop_records_failed_evaluation_error(tmp_path: Path, monk
     assert summary["top_evaluation_errors"]
 
 
+def test_mock_response_loop_ledgers_candidate_specific_exceptions(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "leaderboard.json"
+    receipts_dir = tmp_path / "receipts"
+    mock_response = tmp_path / "candidate.s"
+    mock_response.write_text(Path("problems/sort3-arm64/reference.s").read_text())
+
+    import harness.loop as loop
+
+    calls = 0
+
+    def fake_sandbox_result(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return {"ok": True, "verified": True}
+        raise RuntimeError("candidate timeout")
+
+    monkeypatch.setattr(loop, "sandbox_result", fake_sandbox_result)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "loop.py",
+            "--rounds",
+            "1",
+            "--mock-response-file",
+            str(mock_response),
+            "--db",
+            str(tmp_path / "db.sqlite"),
+            "--leaderboard-json",
+            str(out),
+            "--private-key",
+            str(tmp_path / "data" / "sign.key"),
+            "--public-key",
+            str(receipts_dir / "PUBKEY"),
+            "--receipts-dir",
+            str(receipts_dir),
+        ],
+    )
+    assert loop_main() == 0
+    summary = json.loads(out.read_text())["run_summary"]
+    assert summary["evaluation_count"] == 1
+    assert summary["failed_evaluation_count"] == 1
+    assert summary["evaluation_error_count"] == 1
+    assert "candidate timeout" in summary["top_evaluation_errors"][0]["error"]
+
+
+def test_live_loop_rejects_model_override_before_inference(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "loop.py",
+            "--rounds",
+            "1",
+            "--api-key",
+            "dummy",
+            "--model",
+            "wrong-model",
+            "--db",
+            str(tmp_path / "db.sqlite"),
+            "--leaderboard-json",
+            str(tmp_path / "leaderboard.json"),
+            "--private-key",
+            str(tmp_path / "data" / "sign.key"),
+            "--public-key",
+            str(tmp_path / "receipts" / "PUBKEY"),
+            "--receipts-dir",
+            str(tmp_path / "receipts"),
+        ],
+    )
+    with pytest.raises(SystemExit, match="pinned model"):
+        loop_main()
+
+
 def test_mock_response_loop_honors_max_candidate_responses(tmp_path: Path, monkeypatch) -> None:
     out = tmp_path / "leaderboard.json"
     receipts_dir = tmp_path / "receipts"

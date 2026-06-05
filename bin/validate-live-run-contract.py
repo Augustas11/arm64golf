@@ -106,6 +106,32 @@ def validate() -> list[str]:
             require(bool(rows[0].get("receipt_signature")), "verified leaderboard row must have a receipt signature", errors)
         require(public_key.exists(), "contract run must publish an ed25519 public key", errors)
         require(bool(list(receipts_dir.glob("*.json"))), "contract run must write at least one receipt JSON", errors)
+        code, output = run(
+            [
+                sys.executable,
+                "harness/loop.py",
+                "--rounds",
+                "1",
+                "--model",
+                "wrong-model",
+                "--provider",
+                "air5",
+                "--api-key",
+                "dummy",
+                "--db",
+                str(root / "wrong-model.sqlite"),
+                "--leaderboard-json",
+                str(root / "wrong-model-leaderboard.json"),
+                "--private-key",
+                str(root / "wrong-model" / "sign.key"),
+                "--public-key",
+                str(root / "wrong-model" / "PUBKEY"),
+                "--receipts-dir",
+                str(root / "wrong-model" / "receipts"),
+            ]
+        )
+        require(code != 0, "live run must reject non-pinned model attribution", errors)
+        require("pinned model" in output, "non-pinned model rejection must name the pinned-model rule", errors)
     return errors
 
 

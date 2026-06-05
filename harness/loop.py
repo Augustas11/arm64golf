@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from hashlib import sha256
 from datetime import datetime, UTC
 from pathlib import Path
 
@@ -40,6 +41,19 @@ def sandbox_result(problem_dir: Path, module, candidate, timeout_ms: int, memory
 
 def sandbox_verify(problem_dir: Path, module, candidate, timeout_ms: int, memory_limit_mb: int) -> bool:
     return bool(sandbox_result(problem_dir, module, candidate, timeout_ms, memory_limit_mb).get("verified"))
+
+
+def require_pinned_attribution(model_id: str, provider_id: str, *, mock: bool, seed_only: bool) -> None:
+    if mock or seed_only:
+        return
+    if model_id != DEFAULT_MODEL:
+        raise SystemExit(f"live runs must use pinned model {DEFAULT_MODEL}; got {model_id}")
+    if provider_id != DEFAULT_PROVIDER:
+        raise SystemExit(f"live runs must use pinned provider {DEFAULT_PROVIDER}; got {provider_id}")
+
+
+def fallback_candidate_hash(response: str) -> str:
+    return sha256(response.encode("utf-8")).hexdigest()
 
 
 def receipt_payload(candidate, score: int, model_id: str, provider_id: str) -> dict[str, object]:
@@ -107,6 +121,8 @@ def run(args: argparse.Namespace) -> int:
     store = Store(Path(args.db))
     model_id = args.model
     provider_id = args.provider
+    mock_responses = load_mock_responses(args.mock_response_file)
+    require_pinned_attribution(model_id, provider_id, mock=bool(mock_responses), seed_only=args.seed_only)
 
     seed_baseline(store, args, problem_dir, module, model_id, provider_id, args.timeout_ms, args.memory_limit_mb)
 
@@ -114,7 +130,6 @@ def run(args: argparse.Namespace) -> int:
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
         return 0
 
-    mock_responses = load_mock_responses(args.mock_response_file)
     api_key = args.api_key or os.environ.get("MACPROVIDER_API_KEY")
     if not api_key and not mock_responses:
         raise SystemExit("MACPROVIDER_API_KEY is required unless --seed-only is used")
@@ -172,29 +187,40 @@ def run(args: argparse.Namespace) -> int:
                 response_count=len(responses),
             )
         for response in responses:
-            candidate = module.load(extract_assembly(response))
-            result = sandbox_result(problem_dir, module, candidate, args.timeout_ms, args.memory_limit_mb)
-            verified = bool(result.get("verified"))
-            error = str(result.get("error") or "")
-            score = module.score(candidate)
-            store.record_candidate(
-                candidate_hash=candidate.candidate_hash,
-                problem_id=candidate.problem_id,
-                source=candidate.normalized_source,
-                score=score,
-                verified=verified,
-                model_id=model_id,
-                provider_id=provider_id,
-            )
+            candidate = None
+            score = 0
+            candidate_hash = fallback_candidate_hash(response)
+            problem_id = module.PROBLEM_ID
+            verified = False
+            error = ""
+            try:
+                candidate = module.load(extract_assembly(response))
+                problem_id = candidate.problem_id
+                candidate_hash = candidate.candidate_hash
+                score = module.score(candidate)
+                result = sandbox_result(problem_dir, module, candidate, args.timeout_ms, args.memory_limit_mb)
+                verified = bool(result.get("verified"))
+                error = str(result.get("error") or "")
+                store.record_candidate(
+                    candidate_hash=candidate.candidate_hash,
+                    problem_id=candidate.problem_id,
+                    source=candidate.normalized_source,
+                    score=score,
+                    verified=verified,
+                    model_id=model_id,
+                    provider_id=provider_id,
+                )
+            except Exception as exc:  # noqa: BLE001 - candidate-specific failures must be ledgered.
+                error = f"{type(exc).__name__}: {exc}"
             store.record_evaluation(
                 attempt_id=attempt_id,
-                problem_id=candidate.problem_id,
-                candidate_hash=candidate.candidate_hash,
+                problem_id=problem_id,
+                candidate_hash=candidate_hash,
                 score=score,
                 verified=verified,
                 error=error,
             )
-            if verified:
+            if verified and candidate is not None:
                 sign_and_record_receipt(store, args, candidate, score, model_id, provider_id)
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
         if args.stop_on_verdict and is_search_terminal(store.run_summary(module.PROBLEM_ID)):

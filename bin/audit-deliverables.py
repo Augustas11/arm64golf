@@ -115,7 +115,7 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
         AuditItem(
             "live_run_contract",
             "complete" if live_run_contract_ok() else "missing",
-            "live-run contract validates: response cap, failed-evaluation logging, response ordinals, and receipt export",
+            "live-run contract validates: response cap, failed-evaluation logging, response ordinals, receipt export, and pinned attribution",
         ),
         AuditItem(
             "inference_path",

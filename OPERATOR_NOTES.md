@@ -70,8 +70,8 @@ Before starting a real search:
    sandbox verification, scoring, receipt signing, SQLite persistence, and
    leaderboard export work end to end
 8. run `bin/validate-live-run-contract.py --json` to confirm response caps,
-   invalid-assembly logging, response ordinals, and receipt export before the
-   live run
+   invalid-assembly logging, response ordinals, receipt export, and pinned
+   live-run attribution before the live run
 9. run `bin/validate-inference-config.py --json` to confirm the request stays
    pinned to the MacProvider endpoint, coder model, `air5` provider header,
    v0.1 sampling defaults, and authentication failure behavior

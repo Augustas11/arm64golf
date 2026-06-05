@@ -107,7 +107,7 @@ def render_report(problem_id: str, summary: dict[str, object]) -> str:
             "- Static leaderboard contains the seed baseline row and run-summary counters.",
             "- `bin/validate-docs.py` proves `SPEC.md` and `README.md` still satisfy the required private-test, recruiting, and no-overclaim contracts.",
             "- `bin/validate-harness-smoke.py` proves the offline harness path with mock inference, sandbox verification, scoring, receipt signing, SQLite persistence, and leaderboard export.",
-            "- `bin/validate-live-run-contract.py` proves response caps, failed-evaluation logging, response ordinals, and receipt export before a live run.",
+            "- `bin/validate-live-run-contract.py` proves response caps, failed-evaluation logging, response ordinals, receipt export, and pinned live-run attribution before a live run.",
             "- `bin/validate-inference-config.py` proves the pinned MacProvider endpoint, coder model, air5 provider header, sampling defaults, and authentication failure behavior.",
             "- `bin/validate-sandbox.py` proves the deny-profile contract, native runner, escape-vector pytest suite, timeout, and memory-cap reporting.",
             "- `bin/validate-receipts.py` verifies leaderboard rows against signed receipt payloads.",
