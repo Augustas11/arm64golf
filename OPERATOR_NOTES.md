@@ -60,15 +60,18 @@ Before starting a real search:
 1. complete `AIR5_OPERATOR_NOTE.md`
 2. confirm `MACPROVIDER_API_KEY` is set
 3. run `bin/verify-receipt.py` against the seed receipt
-4. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
+4. run `bin/audit-deliverables.py --json` to confirm local artifacts are
+   complete and only approved pending/deferred gates remain
+5. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
    intended provider id are visible; use `--url https://api.streamvc.live/v1/models`
    with `MACPROVIDER_API_KEY` if the coordinator endpoint is unavailable
-5. run local preflight and sandbox tests on the operator machine
-6. run the harness with a small round count before a 10,000-call run
+6. run local preflight and sandbox tests on the operator machine
+7. run the harness with a small round count before a 10,000-call run
 
 Example:
 
 ```bash
+bin/audit-deliverables.py --json
 bin/check-air5-model.py --provider-alias m4
 bin/preflight.py --run-tests
 .venv/bin/pytest sandbox/tests -q
@@ -79,6 +82,12 @@ bin/preflight.py --run-tests
 .venv/bin/python harness/loop.py --rounds 1 --max-candidate-responses 8
 .venv/bin/python harness/loop.py --rounds 1250 --max-candidate-responses 10000
 ```
+
+If the local command sandbox cannot let `bin/audit-deliverables.py` call the
+GitHub API, use `bin/audit-deliverables.py --offline --json` for the local
+artifact audit and run `bin/preflight.py --run-tests` or `gh repo view
+Augustas11/arm64golf --json visibility` separately to prove the repo is still
+private.
 
 The `--mock-response-file` command is the offline end-to-end smoke. It records
 one synthetic attempt and exercises candidate loading, native sandbox

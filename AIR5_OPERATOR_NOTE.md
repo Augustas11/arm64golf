@@ -3,6 +3,10 @@
 This note enables `arm64golf` traffic on provider node `air5`, the M4 MacBook
 Air with 16 GB unified memory.
 
+Status: untested-pending-handoff. The instructions are ready for the air5
+operator walkthrough, but the model swap, provider reconnect, and kill switch
+have not been verified yet.
+
 ## Goal
 
 Serve `mlx-community/Qwen2.5-Coder-7B-Instruct-4bit` through MacProvider so

@@ -584,3 +584,48 @@ def test_preflight_rejects_unexpected_origin() -> None:
     result = script.check_repo_visibility("https://github.com/Augustas11/something-else.git", allow_public_launch=False)
     assert result["ok"] is False
     assert result["summary"] == "origin does not match expected private test repo"
+
+
+def test_deliverable_audit_requires_private_repo(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+
+    def fake_run(cmd, timeout_s=10.0):
+        if cmd == ["git", "remote", "get-url", "origin"]:
+            return 0, "https://github.com/Augustas11/arm64golf.git"
+        if cmd == ["gh", "repo", "view", "Augustas11/arm64golf", "--json", "nameWithOwner,url,visibility"]:
+            return 0, '{"nameWithOwner":"Augustas11/arm64golf","url":"https://github.com/Augustas11/arm64golf","visibility":"PRIVATE"}'
+        raise AssertionError(cmd)
+
+    monkeypatch.setattr(script, "run", fake_run)
+    result = script.git_repo_status()
+    assert result.status == "complete"
+    assert "private test repo" in result.summary
+
+
+def test_deliverable_audit_rejects_public_repo(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+
+    def fake_run(cmd, timeout_s=10.0):
+        if cmd == ["git", "remote", "get-url", "origin"]:
+            return 0, "https://github.com/Augustas11/arm64golf.git"
+        if cmd == ["gh", "repo", "view", "Augustas11/arm64golf", "--json", "nameWithOwner,url,visibility"]:
+            return 0, '{"nameWithOwner":"Augustas11/arm64golf","url":"https://github.com/Augustas11/arm64golf","visibility":"PUBLIC"}'
+        raise AssertionError(cmd)
+
+    monkeypatch.setattr(script, "run", fake_run)
+    result = script.git_repo_status()
+    assert result.status == "failed"
+    assert "PRIVATE" in result.summary
+
+
+def test_deliverable_audit_offline_mode_skips_visibility(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+
+    def fake_run(cmd, timeout_s=10.0):
+        assert cmd == ["git", "remote", "get-url", "origin"]
+        return 0, "https://github.com/Augustas11/arm64golf.git"
+
+    monkeypatch.setattr(script, "run", fake_run)
+    result = script.git_repo_status(check_visibility=False)
+    assert result.status == "pending"
+    assert "offline mode" in result.summary
