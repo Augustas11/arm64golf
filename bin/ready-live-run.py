@@ -68,11 +68,35 @@ def preflight_check(run_tests: bool) -> dict[str, Any]:
     }
 
 
+def live_credentials_check() -> dict[str, Any]:
+    present = bool(os.environ.get("MACPROVIDER_API_KEY"))
+    return {
+        "name": "live_credentials",
+        "ok": present,
+        "summary": "MACPROVIDER_API_KEY is present" if present else "MACPROVIDER_API_KEY is not present",
+        "operator_actions": [] if present else ["Set MACPROVIDER_API_KEY in the operator environment before live model checks or inference."],
+    }
+
+
 def air5_model_check(skip: bool, provider_aliases: list[str], url: str) -> dict[str, Any]:
     if skip:
-        return {"name": "air5_model", "ok": False, "skipped": True, "summary": "model check skipped"}
+        return {
+            "name": "air5_model",
+            "ok": False,
+            "skipped": True,
+            "summary": "model check skipped to avoid touching air5 without operator coordination",
+            "operator_actions": [
+                "Coordinate with the air5 owner before installing models, upgrading provider software, editing config, or reconnecting the node."
+            ],
+        }
     if not os.environ.get("MACPROVIDER_API_KEY") and "api.streamvc.live" in url:
-        return {"name": "air5_model", "ok": False, "skipped": True, "summary": "MACPROVIDER_API_KEY is required for API model check"}
+        return {
+            "name": "air5_model",
+            "ok": False,
+            "skipped": True,
+            "summary": "MACPROVIDER_API_KEY is required for API model check",
+            "operator_actions": ["Set MACPROVIDER_API_KEY in the operator environment before checking the authenticated public API."],
+        }
 
     cmd = [sys.executable, "bin/check-air5-model.py", "--url", url]
     for alias in provider_aliases:
@@ -91,6 +115,7 @@ def readiness(args: argparse.Namespace) -> dict[str, Any]:
         json_command_check("web_validation", [sys.executable, "bin/validate-web.py", "--json"]),
         json_command_check("seed_receipt", [sys.executable, "bin/verify-receipt.py", "receipts/726c3e4c49b5.json"]),
         preflight_check(args.run_tests),
+        live_credentials_check(),
         air5_model_check(args.skip_model_check, args.provider_alias, args.models_url),
     ]
     blockers = [check["name"] for check in checks if not check.get("ok")]

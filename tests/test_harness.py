@@ -145,6 +145,20 @@ def test_validate_report_rejects_stale_report(tmp_path: Path, monkeypatch) -> No
     assert any("must match" in error for error in errors)
 
 
+def test_validate_air5_handoff_accepts_current_contract() -> None:
+    script = load_script("bin/validate-air5-handoff.py")
+    assert script.validate() == []
+
+
+def test_validate_air5_handoff_requires_no_touch_operator_boundary(tmp_path: Path) -> None:
+    script = load_script("bin/validate-air5-handoff.py")
+    operator_notes = tmp_path / "OPERATOR_NOTES.md"
+    operator_notes.write_text("missing owner coordination rule\n")
+
+    errors = script.validate(operator_notes=operator_notes)
+    assert any("specific action to Augustas" in error for error in errors)
+
+
 def test_parse_chat_response_returns_all_choices() -> None:
     raw = b'{"choices":[{"message":{"content":"cmp x0, x1"}},{"message":{"content":"ret"}}]}'
     assert parse_chat_response(raw) == ["cmp x0, x1", "ret"]
@@ -580,6 +594,7 @@ def test_write_report_renders_pending_state(tmp_path: Path) -> None:
     assert "bin/validate-sandbox.py" in report
     assert "bin/validate-receipts.py" in report
     assert "bin/validate-report.py" in report
+    assert "bin/validate-air5-handoff.py" in report
 
 
 def test_write_report_renders_pass_b_evidence(tmp_path: Path) -> None:
@@ -678,6 +693,13 @@ def test_air5_model_check_adds_authorization_header(monkeypatch) -> None:
     assert captured == {"auth": "Bearer secret", "timeout": 3}
 
 
+def test_air5_model_check_reports_owner_actions_for_missing_model_and_provider() -> None:
+    script = load_script("bin/check-air5-model.py")
+    actions = script.operator_actions(False, False, ["air5", "m4"])
+    assert any("download/prewarm" in action for action in actions)
+    assert any("provider id mapping" in action for action in actions)
+
+
 def test_preflight_parses_github_origin_urls() -> None:
     script = load_script("bin/preflight.py")
     assert script.repo_slug_from_origin("https://github.com/Augustas11/arm64golf.git") == "Augustas11/arm64golf"
@@ -765,6 +787,7 @@ def test_deliverable_audit_uses_spec_doc_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
     monkeypatch.setattr(script, "report_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "air5_handoff_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["spec"].status == "missing"
@@ -783,6 +806,7 @@ def test_deliverable_audit_uses_readme_doc_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
     monkeypatch.setattr(script, "report_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "air5_handoff_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["readme"].status == "missing"
@@ -801,6 +825,7 @@ def test_deliverable_audit_uses_sort3_contract_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
     monkeypatch.setattr(script, "report_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "air5_handoff_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["sort3_module"].status == "missing"
@@ -819,6 +844,7 @@ def test_deliverable_audit_uses_harness_smoke_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
     monkeypatch.setattr(script, "report_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "air5_handoff_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["harness"].status == "missing"
@@ -837,6 +863,7 @@ def test_deliverable_audit_uses_inference_config_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
     monkeypatch.setattr(script, "report_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "air5_handoff_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["inference_path"].status == "missing"
@@ -855,6 +882,7 @@ def test_deliverable_audit_uses_sandbox_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
     monkeypatch.setattr(script, "report_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "air5_handoff_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["sandbox"].status == "missing"
@@ -873,10 +901,30 @@ def test_deliverable_audit_uses_report_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
     monkeypatch.setattr(script, "report_validator_ok", lambda: False)
+    monkeypatch.setattr(script, "air5_handoff_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["report"].status == "missing"
     assert "tracked leaderboard evidence" in items["report"].summary
+
+
+def test_deliverable_audit_uses_air5_handoff_validator(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+    monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "spec_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "inference_config_ok", lambda: True)
+    monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "report_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "air5_handoff_validator_ok", lambda: False)
+
+    items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
+    assert items["air5_handoff"].status == "missing"
+    assert "operator walkthrough" in items["air5_handoff"].summary
 
 
 def test_validate_web_accepts_current_static_assets() -> None:
@@ -941,11 +989,15 @@ def test_ready_live_run_reports_skipped_model_check_as_blocker(monkeypatch) -> N
     )()
     payload = script.readiness(args)
     assert payload["ready"] is False
+    assert "live_credentials" in payload["blockers"]
     assert "air5_model" in payload["blockers"]
+    air5_check = next(check for check in payload["checks"] if check["name"] == "air5_model")
+    assert "operator_actions" in air5_check
 
 
 def test_ready_live_run_can_report_ready_when_all_checks_pass(monkeypatch) -> None:
     script = load_script("bin/ready-live-run.py")
+    monkeypatch.setenv("MACPROVIDER_API_KEY", "secret")
 
     def fake_json_command_check(name, cmd, timeout_s=90.0):
         return {"name": name, "ok": True, "returncode": 0, "output": {"ok": True}}

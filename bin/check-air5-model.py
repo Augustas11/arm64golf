@@ -37,6 +37,21 @@ def flatten_strings(value: Any) -> list[str]:
     return strings
 
 
+def operator_actions(model_ok: bool, provider_ok: bool, provider_candidates: list[str]) -> list[str]:
+    actions: list[str] = []
+    if not model_ok:
+        actions.append(
+            "Ask the air5 owner to download/prewarm mlx-community/Qwen2.5-Coder-7B-Instruct-4bit "
+            "and configure phase3-binary to serve it for arm64golf."
+        )
+    if not provider_ok:
+        actions.append(
+            "Ask the air5 owner to reconnect the provider or document the live provider id mapping; "
+            f"expected one of: {', '.join(provider_candidates)}."
+        )
+    return actions
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check whether air5 is advertising the arm64golf coder model.")
     parser.add_argument("--url", default=DEFAULT_MODELS_URL)
@@ -61,6 +76,7 @@ def main() -> int:
     model_ok = args.model in strings
     provider_candidates = [args.provider, *args.provider_alias]
     provider_ok = any(provider in strings for provider in provider_candidates)
+    actions = operator_actions(model_ok, provider_ok, provider_candidates)
 
     print(
         json.dumps(
@@ -71,6 +87,7 @@ def main() -> int:
                 "provider": args.provider,
                 "provider_aliases": args.provider_alias,
                 "provider_present": provider_ok,
+                "operator_actions": actions,
                 "string_count": len(strings),
             },
             indent=2,

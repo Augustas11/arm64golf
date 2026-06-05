@@ -135,9 +135,9 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
         AuditItem(
             "air5_handoff",
             "pending"
-            if file_contains("AIR5_OPERATOR_NOTE.md", ["Status: untested-pending-handoff"])
+            if air5_handoff_validator_ok()
             else "missing",
-            "operator walkthrough is documented as untested-pending-handoff until the air5 operator completes it",
+            "operator walkthrough is validated as untested-pending-handoff until the air5 operator completes it",
         ),
         AuditItem(
             "live_credentials",
@@ -233,6 +233,11 @@ def readme_doc_ok() -> bool:
 
 def report_validator_ok() -> bool:
     code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-report.py"), "--json"])
+    return code == 0
+
+
+def air5_handoff_validator_ok() -> bool:
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-air5-handoff.py"), "--json"])
     return code == 0
 
 

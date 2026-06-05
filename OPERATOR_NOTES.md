@@ -59,37 +59,40 @@ Before starting a real search:
 
 1. complete `AIR5_OPERATOR_NOTE.md`
 2. confirm `MACPROVIDER_API_KEY` is set
-3. run `bin/verify-receipt.py` against the seed receipt
-4. run `bin/validate-docs.py --json` to confirm `SPEC.md` and `README.md`
+3. run `bin/validate-air5-handoff.py --json` to confirm the air5 note and
+   no-touch owner coordination rules are intact
+4. run `bin/verify-receipt.py` against the seed receipt
+5. run `bin/validate-docs.py --json` to confirm `SPEC.md` and `README.md`
    still match the required private-test/recruiting contracts
-5. run `bin/audit-deliverables.py --json` to confirm local artifacts are
+6. run `bin/audit-deliverables.py --json` to confirm local artifacts are
    complete and only approved pending/deferred gates remain
-6. run `bin/validate-harness-smoke.py --json` to confirm mock inference,
+7. run `bin/validate-harness-smoke.py --json` to confirm mock inference,
    sandbox verification, scoring, receipt signing, SQLite persistence, and
    leaderboard export work end to end
-7. run `bin/validate-inference-config.py --json` to confirm the request stays
+8. run `bin/validate-inference-config.py --json` to confirm the request stays
    pinned to the MacProvider endpoint, coder model, `air5` provider header,
    v0.1 sampling defaults, and authentication failure behavior
-8. run `bin/validate-sandbox.py --json` to confirm the sandbox profile,
+9. run `bin/validate-sandbox.py --json` to confirm the sandbox profile,
    native runner, escape-vector blocks, timeout, and memory-cap reporting
-9. run `bin/validate-receipts.py --json` to confirm every leaderboard row is
+10. run `bin/validate-receipts.py --json` to confirm every leaderboard row is
    backed by a matching signed receipt
-10. run `bin/validate-report.py --json` to confirm `REPORT.md` is generated
+11. run `bin/validate-report.py --json` to confirm `REPORT.md` is generated
     from tracked leaderboard evidence and still names the pending live-run gates
-11. run `bin/validate-web.py --json` to confirm the static leaderboard files
+12. run `bin/validate-web.py --json` to confirm the static leaderboard files
    match the JSON contract before preview/deploy
-12. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
+13. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
    gate; it should report no blockers before a live search
-13. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
+14. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
    intended provider id are visible; use `--url https://api.streamvc.live/v1/models`
    with `MACPROVIDER_API_KEY` if the coordinator endpoint is unavailable
-14. run local preflight and sandbox tests on the operator machine
-15. run the harness with a small round count before a 10,000-call run
+15. run local preflight and sandbox tests on the operator machine
+16. run the harness with a small round count before a 10,000-call run
 
 Example:
 
 ```bash
 bin/validate-docs.py --json
+bin/validate-air5-handoff.py --json
 bin/audit-deliverables.py --json
 bin/validate-harness-smoke.py --json
 bin/validate-inference-config.py --json

@@ -111,6 +111,7 @@ def render_report(problem_id: str, summary: dict[str, object]) -> str:
             "- `bin/validate-sandbox.py` proves the deny-profile contract, native runner, escape-vector pytest suite, timeout, and memory-cap reporting.",
             "- `bin/validate-receipts.py` verifies leaderboard rows against signed receipt payloads.",
             "- `bin/validate-report.py` verifies this report is generated from tracked leaderboard evidence and preserves pending live-run gates.",
+            "- `bin/validate-air5-handoff.py` verifies the air5 operator note and no-touch owner coordination rules.",
             "- `bin/validate-web.py` verifies the static leaderboard HTML/JSON contract.",
             "- `bin/audit-deliverables.py` records local BUILD_PROMPT deliverable status.",
             "- SQLite records every evaluated response separately from deduped candidates, preserving score, verification result, and sandbox/compiler error text.",
