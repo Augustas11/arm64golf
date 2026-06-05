@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -150,8 +151,8 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
         ),
         AuditItem(
             "receipts",
-            "complete" if all(file_exists(path) for path in ["receipts/PUBKEY", "receipts/726c3e4c49b5.json"]) else "missing",
-            "ed25519 public key and seed verified-candidate receipt are present",
+            "complete" if receipt_validator_ok() else "missing",
+            "ed25519 public key and leaderboard receipts pass bin/validate-receipts.py",
         ),
         AuditItem(
             "web",
@@ -218,7 +219,12 @@ def render_markdown(items: list[AuditItem]) -> str:
 
 
 def web_validator_ok() -> bool:
-    code, _ = run([str(REPO_ROOT / "bin" / "validate-web.py"), "--json"])
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-web.py"), "--json"])
+    return code == 0
+
+
+def receipt_validator_ok() -> bool:
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-receipts.py"), "--json"])
     return code == 0
 
 

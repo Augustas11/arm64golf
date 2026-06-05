@@ -649,3 +649,19 @@ def test_validate_web_rejects_incomplete_leaderboard_row(tmp_path: Path) -> None
 
     errors = script.validate(web_dir)
     assert any("receipt_signature" in error for error in errors)
+
+
+def test_validate_receipts_accepts_current_leaderboard() -> None:
+    script = load_script("bin/validate-receipts.py")
+    assert script.validate(Path("web/public/leaderboard.json"), Path("receipts")) == []
+
+
+def test_validate_receipts_rejects_row_score_mismatch(tmp_path: Path) -> None:
+    script = load_script("bin/validate-receipts.py")
+    leaderboard = tmp_path / "leaderboard.json"
+    payload = json.loads(Path("web/public/leaderboard.json").read_text())
+    payload["rows"][0]["score"] = 17
+    leaderboard.write_text(json.dumps(payload))
+
+    errors = script.validate(leaderboard, Path("receipts"))
+    assert any("score" in error for error in errors)
