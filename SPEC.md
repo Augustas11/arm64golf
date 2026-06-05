@@ -495,15 +495,17 @@ Summary fields:
 - `candidate_response_count`: total completion choices returned and evaluated
 - `run_summary`: derived run evidence, including evaluated responses,
   verified evaluations, best verified score, and first response ordinals for
-  verified, 17-instruction, and 16-instruction candidates
+  verified, 17-instruction, and 16-instruction candidates. It also includes
+  failed evaluation count, error-bearing evaluation count, and top grouped
+  evaluation errors for FAIL-mode analysis.
 
 PASS/FAIL reporting uses `candidate_response_count` for the "within 200" and
 "within 10,000" thresholds, with `requested_candidate_count` retained to show
 provider shortfall or failed requests.
 
 The SQLite store also records each evaluated response in `evaluations`; this
-preserves evidence even when multiple responses deduplicate to the same
-candidate hash.
+preserves score, verified status, and sandbox/compiler error text even when
+multiple responses deduplicate to the same candidate hash.
 
 ### 8.3 Static Export
 

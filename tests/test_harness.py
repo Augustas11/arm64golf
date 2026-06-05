@@ -67,6 +67,8 @@ def test_store_exports_leaderboard(tmp_path: Path) -> None:
     assert payload["requested_candidate_count"] == 8
     assert payload["candidate_response_count"] == 6
     assert payload["run_summary"]["evaluation_count"] == 1
+    assert payload["run_summary"]["failed_evaluation_count"] == 0
+    assert payload["run_summary"]["evaluation_error_count"] == 0
     assert payload["run_summary"]["first_17_response"] == 1
     assert payload["last_update"]
     assert payload["rows"][0]["rank"] == 1
@@ -115,6 +117,8 @@ def test_seed_only_loop_exports_receipt_backed_leaderboard(tmp_path: Path, monke
     assert payload["requested_candidate_count"] == 0
     assert payload["candidate_response_count"] == 0
     assert payload["run_summary"]["evaluation_count"] == 0
+    assert payload["run_summary"]["failed_evaluation_count"] == 0
+    assert payload["run_summary"]["evaluation_error_count"] == 0
     assert payload["rows"][0]["receipt_signature"]
     assert list(receipts_dir.glob("*.json"))
 
@@ -150,9 +154,46 @@ def test_mock_response_loop_exports_attempt_and_receipt(tmp_path: Path, monkeypa
     assert payload["requested_candidate_count"] == 1
     assert payload["candidate_response_count"] == 1
     assert payload["run_summary"]["evaluation_count"] == 1
+    assert payload["run_summary"]["failed_evaluation_count"] == 0
+    assert payload["run_summary"]["evaluation_error_count"] == 0
     assert payload["run_summary"]["first_verified_response"] == 1
     assert payload["rows"][0]["score"] == 18
     assert payload["rows"][0]["receipt_signature"]
+
+
+def test_mock_response_loop_records_failed_evaluation_error(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "leaderboard.json"
+    receipts_dir = tmp_path / "receipts"
+    mock_response = tmp_path / "candidate.s"
+    mock_response.write_text("this_is_not_arm64 x0, x1\n")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "loop.py",
+            "--rounds",
+            "1",
+            "--mock-response-file",
+            str(mock_response),
+            "--db",
+            str(tmp_path / "db.sqlite"),
+            "--leaderboard-json",
+            str(out),
+            "--private-key",
+            str(tmp_path / "data" / "sign.key"),
+            "--public-key",
+            str(receipts_dir / "PUBKEY"),
+            "--receipts-dir",
+            str(receipts_dir),
+        ],
+    )
+    assert loop_main() == 0
+    payload = json.loads(out.read_text())
+    summary = payload["run_summary"]
+    assert summary["attempt_count"] == 1
+    assert summary["evaluation_count"] == 1
+    assert summary["failed_evaluation_count"] == 1
+    assert summary["evaluation_error_count"] == 1
+    assert summary["top_evaluation_errors"]
 
 
 def test_store_migrates_attempt_accounting_columns(tmp_path: Path) -> None:
@@ -227,6 +268,8 @@ def test_summarize_run_derives_threshold_verdicts(tmp_path: Path) -> None:
     store.close()
 
     assert summary["candidate_response_count"] == 3
+    assert summary["failed_evaluation_count"] == 2
+    assert summary["evaluation_error_count"] == 0
     assert summary["first_verified_response"] == 3
     assert summary["first_17_response"] == 3
     assert script.verdict(summary) == "PASS-B"

@@ -158,7 +158,7 @@ class Store:
             "candidate_response_count": int(row["candidate_response_count"]),
         }
 
-    def run_summary(self, problem_id: str) -> dict[str, int | None]:
+    def run_summary(self, problem_id: str) -> dict[str, Any]:
         stats = self.attempt_stats(problem_id)
         eval_count = self.db.execute(
             "SELECT COUNT(*) FROM evaluations WHERE problem_id = ?",
@@ -176,11 +176,35 @@ class Store:
             **stats,
             "evaluation_count": int(eval_count),
             "verified_evaluation_count": int(verified_count),
+            "failed_evaluation_count": int(eval_count) - int(verified_count),
+            "evaluation_error_count": self.evaluation_error_count(problem_id),
+            "top_evaluation_errors": self.evaluation_error_summary(problem_id),
             "best_verified_score": int(best["score"]) if best else None,
             "first_verified_response": self._eval_ordinal(problem_id, first_verified),
             "first_17_response": self._eval_ordinal(problem_id, first_17),
             "first_16_response": self._eval_ordinal(problem_id, first_16),
         }
+
+    def evaluation_error_count(self, problem_id: str) -> int:
+        cur = self.db.execute(
+            "SELECT COUNT(*) FROM evaluations WHERE problem_id = ? AND error != ''",
+            (problem_id,),
+        )
+        return int(cur.fetchone()[0])
+
+    def evaluation_error_summary(self, problem_id: str, limit: int = 5) -> list[dict[str, int | str]]:
+        cur = self.db.execute(
+            """
+            SELECT error, COUNT(*) AS count
+            FROM evaluations
+            WHERE problem_id = ? AND error != ''
+            GROUP BY error
+            ORDER BY count DESC, error ASC
+            LIMIT ?
+            """,
+            (problem_id, limit),
+        )
+        return [{"error": row["error"], "count": int(row["count"])} for row in cur.fetchall()]
 
     def _eval_ordinal(self, problem_id: str, row: sqlite3.Row | None) -> int | None:
         if row is None:

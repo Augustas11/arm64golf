@@ -5,6 +5,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 from harness.store import Store
 
 
-def verdict(summary: dict[str, int | None]) -> str:
+def verdict(summary: dict[str, Any]) -> str:
     responses = int(summary["candidate_response_count"] or 0)
     first_verified = summary["first_verified_response"]
     first_17 = summary["first_17_response"]
@@ -33,8 +34,9 @@ def verdict(summary: dict[str, int | None]) -> str:
     return "RUNNING"
 
 
-def render_markdown(problem_id: str, summary: dict[str, int | None]) -> str:
+def render_markdown(problem_id: str, summary: dict[str, Any]) -> str:
     status = verdict(summary)
+    top_errors = summary.get("top_evaluation_errors") or []
     lines = [
         f"# arm64golf run summary: {problem_id}",
         "",
@@ -47,6 +49,8 @@ def render_markdown(problem_id: str, summary: dict[str, int | None]) -> str:
         f"- candidate responses: {summary['candidate_response_count']}",
         f"- evaluated responses: {summary['evaluation_count']}",
         f"- verified evaluations: {summary['verified_evaluation_count']}",
+        f"- failed evaluations: {summary['failed_evaluation_count']}",
+        f"- evaluations with error text: {summary['evaluation_error_count']}",
         f"- best verified score: {summary['best_verified_score'] or 'none'}",
         "",
         "## Threshold Evidence",
@@ -58,6 +62,11 @@ def render_markdown(problem_id: str, summary: dict[str, int | None]) -> str:
         "PASS/FAIL thresholds use evaluated candidate-response ordinals. PASS-C here means a verified 16-instruction candidate; structural-diversity PASS-C still requires manual review.",
         "",
     ]
+    if top_errors:
+        lines.extend(["## Top Evaluation Errors", ""])
+        for item in top_errors:
+            lines.append(f"- {item['count']}x {item['error']}")
+        lines.append("")
     return "\n".join(lines)
 
 

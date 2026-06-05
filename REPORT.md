@@ -25,7 +25,8 @@ handoff and live MacProvider credentials are still pending.
   thresholds can be audited from run data.
 - The SQLite store records each evaluated response separately from deduped
   candidates, and `bin/summarize-run.py` derives the current verdict from that
-  evidence.
+  evidence. Failed evaluations preserve sandbox/compiler error text for
+  failure-mode analysis.
 - `sandbox/profile.sb` starts from deny-by-default and the native sandbox test
   suite blocks filesystem read, filesystem write, network connect, fork, and
   external exec probes. It also verifies that a non-returning candidate is

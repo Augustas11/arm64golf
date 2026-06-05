@@ -25,7 +25,7 @@ def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def sandbox_verify(problem_dir: Path, module, candidate, timeout_ms: int, memory_limit_mb: int) -> bool:
+def sandbox_result(problem_dir: Path, module, candidate, timeout_ms: int, memory_limit_mb: int) -> dict[str, object]:
     result = run_sandboxed_candidate(
         problem_dir,
         candidate.normalized_source,
@@ -34,7 +34,11 @@ def sandbox_verify(problem_dir: Path, module, candidate, timeout_ms: int, memory
     )
     if not result.get("ok"):
         raise RuntimeError(str(result.get("error", "sandbox runner failed")))
-    return bool(result.get("verified"))
+    return result
+
+
+def sandbox_verify(problem_dir: Path, module, candidate, timeout_ms: int, memory_limit_mb: int) -> bool:
+    return bool(sandbox_result(problem_dir, module, candidate, timeout_ms, memory_limit_mb).get("verified"))
 
 
 def receipt_payload(candidate, score: int, model_id: str, provider_id: str) -> dict[str, object]:
@@ -158,7 +162,9 @@ def run(args: argparse.Namespace) -> int:
             )
         for response in responses:
             candidate = module.load(extract_assembly(response))
-            verified = sandbox_verify(problem_dir, module, candidate, args.timeout_ms, args.memory_limit_mb)
+            result = sandbox_result(problem_dir, module, candidate, args.timeout_ms, args.memory_limit_mb)
+            verified = bool(result.get("verified"))
+            error = str(result.get("error") or "")
             score = module.score(candidate)
             store.record_candidate(
                 candidate_hash=candidate.candidate_hash,
@@ -175,6 +181,7 @@ def run(args: argparse.Namespace) -> int:
                 candidate_hash=candidate.candidate_hash,
                 score=score,
                 verified=verified,
+                error=error,
             )
             if verified:
                 sign_and_record_receipt(store, args, candidate, score, model_id, provider_id)
