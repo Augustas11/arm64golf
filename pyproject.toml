@@ -17,5 +17,5 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["sandbox/tests"]
+testpaths = ["sandbox/tests", "tests"]
 pythonpath = ["."]
