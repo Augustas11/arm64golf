@@ -94,22 +94,13 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
         ),
         AuditItem(
             "spec",
-            "complete" if file_contains("SPEC.md", ["## 1. Goals", "## 10. Out Of Scope"]) else "missing",
-            "SPEC.md covers the v0.1 phases and success criteria",
+            "complete" if spec_doc_ok() else "missing",
+            "SPEC.md contract validates: sections, PoC questions, interfaces, gates, and private-test status",
         ),
         AuditItem(
             "readme",
-            "complete"
-            if file_contains(
-                "README.md",
-                [
-                    "Open-weight coding models on Apple Silicon",
-                    "https://github.com/Augustas11/macprovider#for-providers",
-                    "https://github.com/Augustas11/arm64golf/issues",
-                ],
-            )
-            else "missing",
-            "README has recruiting copy, provider onboarding, and contestant-interest issue link",
+            "complete" if readme_doc_ok() else "missing",
+            "README contract validates: recruiting copy, participation paths, architecture, and private launch state",
         ),
         AuditItem(
             "sort3_module",
@@ -227,6 +218,16 @@ def sandbox_validator_ok() -> bool:
 
 def inference_config_ok() -> bool:
     code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-inference-config.py"), "--json"])
+    return code == 0
+
+
+def spec_doc_ok() -> bool:
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-docs.py"), "--target", "spec", "--json"])
+    return code == 0
+
+
+def readme_doc_ok() -> bool:
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-docs.py"), "--target", "readme", "--json"])
     return code == 0
 
 

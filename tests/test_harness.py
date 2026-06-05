@@ -116,6 +116,20 @@ def test_validate_inference_config_accepts_current_request_contract() -> None:
     assert script.validate() == []
 
 
+def test_validate_docs_accepts_current_contract() -> None:
+    script = load_script("bin/validate-docs.py")
+    assert script.validate("all") == []
+
+
+def test_validate_docs_rejects_premature_readme_result_claim(tmp_path: Path) -> None:
+    script = load_script("bin/validate-docs.py")
+    readme = tmp_path / "README.md"
+    readme.write_text(Path("README.md").read_text() + "\nWe discovered a 17-instruction result.\n")
+
+    errors = script.validate_readme(readme)
+    assert any("must not claim" in error for error in errors)
+
+
 def test_parse_chat_response_returns_all_choices() -> None:
     raw = b'{"choices":[{"message":{"content":"cmp x0, x1"}},{"message":{"content":"ret"}}]}'
     assert parse_chat_response(raw) == ["cmp x0, x1", "ret"]
@@ -545,6 +559,7 @@ def test_write_report_renders_pending_state(tmp_path: Path) -> None:
     assert "No PASS/FAIL verdict yet" in report
     assert "public launch is intentionally deferred" in report
     assert "bin/ready-live-run.py" in report
+    assert "bin/validate-docs.py" in report
     assert "bin/validate-harness-smoke.py" in report
     assert "bin/validate-inference-config.py" in report
     assert "bin/validate-sandbox.py" in report
@@ -722,9 +737,45 @@ def test_deliverable_audit_offline_mode_skips_visibility(monkeypatch) -> None:
     assert "offline mode" in result.summary
 
 
+def test_deliverable_audit_uses_spec_doc_validator(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+    monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "spec_doc_ok", lambda: False)
+    monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "inference_config_ok", lambda: True)
+    monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+
+    items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
+    assert items["spec"].status == "missing"
+    assert "SPEC.md contract validates" in items["spec"].summary
+
+
+def test_deliverable_audit_uses_readme_doc_validator(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+    monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "spec_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "readme_doc_ok", lambda: False)
+    monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "inference_config_ok", lambda: True)
+    monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+
+    items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
+    assert items["readme"].status == "missing"
+    assert "README contract validates" in items["readme"].summary
+
+
 def test_deliverable_audit_uses_sort3_contract_validator(monkeypatch) -> None:
     script = load_script("bin/audit-deliverables.py")
     monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "spec_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: False)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: True)
@@ -740,6 +791,8 @@ def test_deliverable_audit_uses_sort3_contract_validator(monkeypatch) -> None:
 def test_deliverable_audit_uses_harness_smoke_validator(monkeypatch) -> None:
     script = load_script("bin/audit-deliverables.py")
     monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "spec_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: False)
     monkeypatch.setattr(script, "inference_config_ok", lambda: True)
@@ -755,6 +808,8 @@ def test_deliverable_audit_uses_harness_smoke_validator(monkeypatch) -> None:
 def test_deliverable_audit_uses_inference_config_validator(monkeypatch) -> None:
     script = load_script("bin/audit-deliverables.py")
     monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "spec_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: False)
@@ -770,6 +825,8 @@ def test_deliverable_audit_uses_inference_config_validator(monkeypatch) -> None:
 def test_deliverable_audit_uses_sandbox_validator(monkeypatch) -> None:
     script = load_script("bin/audit-deliverables.py")
     monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "spec_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
     monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
     monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
     monkeypatch.setattr(script, "inference_config_ok", lambda: True)
