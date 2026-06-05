@@ -100,9 +100,11 @@ class Store:
     ) -> None:
         self.db.execute(
             """
-            INSERT OR REPLACE INTO candidates
+            INSERT INTO candidates
             (candidate_hash, problem_id, source, score, verified, model_id, provider_id)
             VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(candidate_hash) DO UPDATE SET
+                verified = MAX(candidates.verified, excluded.verified)
             """,
             (candidate_hash, problem_id, source, score, int(verified), model_id, provider_id),
         )
@@ -110,7 +112,7 @@ class Store:
 
     def record_receipt(self, candidate_hash: str, receipt_path: Path, signature: str) -> None:
         self.db.execute(
-            "INSERT OR REPLACE INTO receipts (candidate_hash, receipt_path, signature) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO receipts (candidate_hash, receipt_path, signature) VALUES (?, ?, ?)",
             (candidate_hash, str(receipt_path), signature),
         )
         self.db.commit()

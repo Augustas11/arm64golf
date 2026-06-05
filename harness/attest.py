@@ -46,6 +46,17 @@ def ensure_keypair(private_path: Path, public_path: Path) -> None:
 
 def sign_receipt(payload: dict[str, object], private_path: Path, public_path: Path, out_dir: Path) -> Receipt:
     ensure_keypair(private_path, public_path)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    short_hash = str(payload["candidate_hash"])[:12]
+    path = out_dir / f"{short_hash}.json"
+    if path.exists():
+        try:
+            verify_receipt(path)
+            envelope = json.loads(path.read_text())
+            return Receipt(path=path, signature=str(envelope["signature"]))
+        except Exception:
+            pass
+
     key = serialization.load_pem_private_key(private_path.read_bytes(), password=None)
     canonical = canonical_json(payload)
     signature = key.sign(canonical)
@@ -55,9 +66,6 @@ def sign_receipt(payload: dict[str, object], private_path: Path, public_path: Pa
         "signature": signature_b64,
         "public_key": public_path.read_text().strip(),
     }
-    out_dir.mkdir(parents=True, exist_ok=True)
-    short_hash = str(payload["candidate_hash"])[:12]
-    path = out_dir / f"{short_hash}.json"
     path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
     return Receipt(path=path, signature=signature_b64)
 

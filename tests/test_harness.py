@@ -77,6 +77,56 @@ def test_store_exports_leaderboard(tmp_path: Path) -> None:
     store.close()
 
 
+def test_store_preserves_first_candidate_discovery_and_receipt(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    store.record_candidate(
+        candidate_hash="abc123",
+        problem_id="sort3-arm64",
+        source="cmp x0, x1\n",
+        score=18,
+        verified=False,
+        model_id="model-a",
+        provider_id="air5",
+    )
+    first = store.best_candidate("sort3-arm64")
+    assert first is None
+
+    store.record_candidate(
+        candidate_hash="abc123",
+        problem_id="sort3-arm64",
+        source="cmp x0, x1\nmov x2, x2\n",
+        score=17,
+        verified=True,
+        model_id="model-b",
+        provider_id="air6",
+    )
+    best = store.best_candidate("sort3-arm64")
+    assert best is not None
+    first_discovered = best["discovered_at"]
+    assert best["score"] == 18
+    assert best["model_id"] == "model-a"
+    assert best["provider_id"] == "air5"
+
+    store.record_candidate(
+        candidate_hash="abc123",
+        problem_id="sort3-arm64",
+        source="cmp x0, x1\nmov x2, x2\n",
+        score=17,
+        verified=True,
+        model_id="model-b",
+        provider_id="air6",
+    )
+    again = store.best_candidate("sort3-arm64")
+    assert again is not None
+    assert again["discovered_at"] == first_discovered
+
+    store.record_receipt("abc123", tmp_path / "first.json", "first-signature")
+    store.record_receipt("abc123", tmp_path / "second.json", "second-signature")
+    rows = store.leaderboard("sort3-arm64")
+    assert rows[0]["receipt_signature"] == "first-signature"
+    store.close()
+
+
 def test_receipt_round_trip(tmp_path: Path) -> None:
     payload = {
         "problem_id": "sort3-arm64",
@@ -89,6 +139,24 @@ def test_receipt_round_trip(tmp_path: Path) -> None:
     }
     receipt = sign_receipt(payload, tmp_path / "sign.key", tmp_path / "PUBKEY", tmp_path / "receipts")
     assert verify_receipt(receipt.path)
+
+
+def test_receipt_signing_reuses_existing_valid_receipt(tmp_path: Path) -> None:
+    payload = {
+        "problem_id": "sort3-arm64",
+        "candidate_hash": "abc123",
+        "score": 18,
+        "model_id": "model",
+        "provider_id": "air5",
+        "harness_version": "0.1.0",
+        "ts": "2026-06-05T00:00:00Z",
+    }
+    receipt = sign_receipt(payload, tmp_path / "sign.key", tmp_path / "PUBKEY", tmp_path / "receipts")
+    original = receipt.path.read_text()
+    changed_payload = {**payload, "ts": "2026-06-05T00:00:01Z"}
+    again = sign_receipt(changed_payload, tmp_path / "sign.key", tmp_path / "PUBKEY", tmp_path / "receipts")
+    assert again == receipt
+    assert receipt.path.read_text() == original
 
 
 def test_seed_only_loop_exports_receipt_backed_leaderboard(tmp_path: Path, monkeypatch) -> None:
