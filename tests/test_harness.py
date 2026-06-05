@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from harness.attest import sign_receipt, verify_receipt
+from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID
 from harness.loop import main as loop_main
 from harness.inference import InferenceError, parse_chat_response
 from harness.module import load_problem_module
@@ -150,6 +151,19 @@ def test_validate_report_rejects_stale_report(tmp_path: Path, monkeypatch) -> No
     assert any("must match" in error for error in errors)
 
 
+def test_validate_report_rejects_seed_air5_attribution(tmp_path: Path, monkeypatch) -> None:
+    script = load_script("bin/validate-report.py")
+    leaderboard = tmp_path / "leaderboard.json"
+    payload = json.loads(Path("web/public/leaderboard.json").read_text())
+    payload["rows"][0]["model_id"] = "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
+    payload["rows"][0]["provider_id"] = "air5"
+    leaderboard.write_text(json.dumps(payload))
+    monkeypatch.setattr(script, "LEADERBOARD", leaderboard)
+
+    errors = script.validate()
+    assert any("must not claim" in error for error in errors)
+
+
 def test_validate_air5_handoff_accepts_current_contract() -> None:
     script = load_script("bin/validate-air5-handoff.py")
     assert script.validate() == []
@@ -211,7 +225,7 @@ def test_store_exports_leaderboard(tmp_path: Path) -> None:
     store.close()
 
 
-def test_store_preserves_first_candidate_discovery_and_receipt(tmp_path: Path) -> None:
+def test_store_preserves_first_candidate_discovery_and_updates_receipt(tmp_path: Path) -> None:
     store = Store(tmp_path / "db.sqlite")
     store.record_candidate(
         candidate_hash="abc123",
@@ -257,7 +271,38 @@ def test_store_preserves_first_candidate_discovery_and_receipt(tmp_path: Path) -
     store.record_receipt("abc123", tmp_path / "first.json", "first-signature")
     store.record_receipt("abc123", tmp_path / "second.json", "second-signature")
     rows = store.leaderboard("sort3-arm64")
-    assert rows[0]["receipt_signature"] == "first-signature"
+    assert rows[0]["receipt_signature"] == "second-signature"
+    store.close()
+
+
+def test_store_replaces_seed_attribution_after_verified_model_response(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    store.record_candidate(
+        candidate_hash="abc123",
+        problem_id="sort3-arm64",
+        source="cmp x0, x1\n",
+        score=18,
+        verified=True,
+        model_id=SEED_MODEL_ID,
+        provider_id=SEED_PROVIDER_ID,
+    )
+    seed = store.best_candidate("sort3-arm64")
+    assert seed is not None
+    assert seed["model_id"] == SEED_MODEL_ID
+
+    store.record_candidate(
+        candidate_hash="abc123",
+        problem_id="sort3-arm64",
+        source="cmp x0, x1\n",
+        score=18,
+        verified=True,
+        model_id="mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+        provider_id="air5",
+    )
+    promoted = store.best_candidate("sort3-arm64")
+    assert promoted is not None
+    assert promoted["model_id"] == "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
+    assert promoted["provider_id"] == "air5"
     store.close()
 
 
@@ -316,10 +361,16 @@ def test_receipt_signing_reuses_existing_valid_receipt(tmp_path: Path) -> None:
     }
     receipt = sign_receipt(payload, tmp_path / "sign.key", tmp_path / "PUBKEY", tmp_path / "receipts")
     original = receipt.path.read_text()
-    changed_payload = {**payload, "ts": "2026-06-05T00:00:01Z"}
-    again = sign_receipt(changed_payload, tmp_path / "sign.key", tmp_path / "PUBKEY", tmp_path / "receipts")
-    assert again == receipt
+    same = sign_receipt(payload, tmp_path / "sign.key", tmp_path / "PUBKEY", tmp_path / "receipts")
+    assert same == receipt
     assert receipt.path.read_text() == original
+
+    changed_payload = {**payload, "score": 17, "ts": "2026-06-05T00:00:01Z"}
+    again = sign_receipt(changed_payload, tmp_path / "sign.key", tmp_path / "PUBKEY", tmp_path / "receipts")
+    assert again.path == receipt.path
+    assert receipt.path.read_text() != original
+    changed = json.loads(receipt.path.read_text())
+    assert changed["payload"]["score"] == 17
 
 
 def test_seed_only_loop_exports_receipt_backed_leaderboard(tmp_path: Path, monkeypatch) -> None:
@@ -351,6 +402,8 @@ def test_seed_only_loop_exports_receipt_backed_leaderboard(tmp_path: Path, monke
     assert payload["run_summary"]["failed_evaluation_count"] == 0
     assert payload["run_summary"]["evaluation_error_count"] == 0
     assert payload["rows"][0]["receipt_signature"]
+    assert payload["rows"][0]["model_id"] == SEED_MODEL_ID
+    assert payload["rows"][0]["provider_id"] == SEED_PROVIDER_ID
     assert list(receipts_dir.glob("*.json"))
 
 
@@ -390,6 +443,8 @@ def test_mock_response_loop_exports_attempt_and_receipt(tmp_path: Path, monkeypa
     assert payload["run_summary"]["first_verified_response"] == 1
     assert payload["rows"][0]["score"] == 18
     assert payload["rows"][0]["receipt_signature"]
+    assert payload["rows"][0]["model_id"] == "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
+    assert payload["rows"][0]["provider_id"] == "air5"
 
 
 def test_mock_response_loop_records_failed_evaluation_error(tmp_path: Path, monkeypatch) -> None:

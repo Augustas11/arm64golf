@@ -15,7 +15,7 @@ from harness.attest import sign_receipt
 from harness.inference import DEFAULT_MODEL, DEFAULT_PROVIDER, InferenceConfig, InferenceError, MacProviderClient
 from harness.module import load_problem_module
 from harness.prompts import build_prompt, extract_assembly
-from harness.store import Store
+from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID, Store
 from harness.verdict import is_search_terminal
 from sandbox.runner import run_candidate as run_sandboxed_candidate
 
@@ -94,8 +94,6 @@ def seed_baseline(
     args: argparse.Namespace,
     problem_dir: Path,
     module,
-    model_id: str,
-    provider_id: str,
     timeout_ms: int,
     memory_limit_mb: int,
 ) -> None:
@@ -108,11 +106,11 @@ def seed_baseline(
         source=candidate.normalized_source,
         score=count,
         verified=verified,
-        model_id=model_id,
-        provider_id=provider_id,
+        model_id=SEED_MODEL_ID,
+        provider_id=SEED_PROVIDER_ID,
     )
     if verified:
-        sign_and_record_receipt(store, args, candidate, count, model_id, provider_id)
+        sign_and_record_receipt(store, args, candidate, count, SEED_MODEL_ID, SEED_PROVIDER_ID)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -124,7 +122,7 @@ def run(args: argparse.Namespace) -> int:
     mock_responses = load_mock_responses(args.mock_response_file)
     require_pinned_attribution(model_id, provider_id, mock=bool(mock_responses), seed_only=args.seed_only)
 
-    seed_baseline(store, args, problem_dir, module, model_id, provider_id, args.timeout_ms, args.memory_limit_mb)
+    seed_baseline(store, args, problem_dir, module, args.timeout_ms, args.memory_limit_mb)
 
     if args.seed_only:
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
@@ -193,6 +191,8 @@ def run(args: argparse.Namespace) -> int:
             problem_id = module.PROBLEM_ID
             verified = False
             error = ""
+            receipt_model_id = model_id
+            receipt_provider_id = provider_id
             try:
                 candidate = module.load(extract_assembly(response))
                 problem_id = candidate.problem_id
@@ -210,6 +210,10 @@ def run(args: argparse.Namespace) -> int:
                     model_id=model_id,
                     provider_id=provider_id,
                 )
+                row = store.candidate(candidate.problem_id, candidate.candidate_hash)
+                if row is not None:
+                    receipt_model_id = str(row["model_id"])
+                    receipt_provider_id = str(row["provider_id"])
             except Exception as exc:  # noqa: BLE001 - candidate-specific failures must be ledgered.
                 error = f"{type(exc).__name__}: {exc}"
             store.record_evaluation(
@@ -221,7 +225,7 @@ def run(args: argparse.Namespace) -> int:
                 error=error,
             )
             if verified and candidate is not None:
-                sign_and_record_receipt(store, args, candidate, score, model_id, provider_id)
+                sign_and_record_receipt(store, args, candidate, score, receipt_model_id, receipt_provider_id)
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
         if args.stop_on_verdict and is_search_terminal(store.run_summary(module.PROBLEM_ID)):
             break

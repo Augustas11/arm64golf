@@ -113,7 +113,7 @@ def validate_leaderboard(leaderboard: Path, receipts: Path, errors: list[str]) -
         require(isinstance(row, dict), "leaderboard first row must be an object", errors)
         if isinstance(row, dict):
             require(row.get("score") == 18, "leaderboard first row score must be 18", errors)
-            require(row.get("model_id"), "leaderboard first row must include model attribution", errors)
+            require(row.get("model_id") == "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit", "leaderboard first row must include mock model attribution", errors)
             require(row.get("provider_id") == "air5", "leaderboard first row provider must be air5", errors)
             require(bool(row.get("receipt_signature")), "leaderboard first row must include a receipt signature", errors)
 

@@ -53,7 +53,8 @@ def sign_receipt(payload: dict[str, object], private_path: Path, public_path: Pa
         try:
             verify_receipt(path)
             envelope = json.loads(path.read_text())
-            return Receipt(path=path, signature=str(envelope["signature"]))
+            if envelope.get("payload") == payload:
+                return Receipt(path=path, signature=str(envelope["signature"]))
         except Exception:
             pass
 

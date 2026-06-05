@@ -1,19 +1,19 @@
 {
   "attempt_count": 0,
   "candidate_response_count": 0,
-  "last_update": "2026-06-05T03:53:13Z",
+  "last_update": "2026-06-05T05:09:54Z",
   "problem_id": "sort3-arm64",
   "requested_candidate_count": 0,
   "rows": [
     {
       "candidate_hash": "726c3e4c49b564d0d9ed5613da861ba72c6107951a48939bb932a1d338076040",
       "candidate_hash_short": "726c3e4c49b5",
-      "discovered_at": "2026-06-05T03:53:13Z",
-      "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
-      "provider_id": "air5",
+      "discovered_at": "2026-06-05T05:09:54Z",
+      "model_id": "reference-baseline",
+      "provider_id": "local-harness",
       "rank": 1,
-      "receipt_signature": "gv6qXJdXlOSUnGd4sPiyAM3eXk5nGR8J5ik/YnUH562cuZ5GwLUUmMT1B2G4Vpd9HHXxouPPwi++jiKLcOivCg==",
-      "receipt_signature_short": "gv6qXJdXlOSUnGd4",
+      "receipt_signature": "EckvZpg9NuYphksjfcl3eyfM3O7SCMCss5KCpmNpOgNtLy1ZYqU0sypiKWdTGwnRUFvFPg/gCkFV94gX2lWWAA==",
+      "receipt_signature_short": "EckvZpg9NuYphksj",
       "score": 18
     }
   ],

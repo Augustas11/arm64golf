@@ -127,6 +127,9 @@ def validate_leaderboard(web_dir: Path, errors: list[str]) -> None:
             require(row.get("rank") == index, f"row {index} rank must be {index}", errors)
             require(isinstance(row.get("score"), int), f"row {index} score must be an integer", errors)
             require(bool(row.get("receipt_signature")), f"row {index} receipt_signature is empty", errors)
+            if index == 1 and payload.get("candidate_response_count") == 0:
+                require(row.get("model_id") == "reference-baseline", "seed leaderboard row must use reference-baseline model_id", errors)
+                require(row.get("provider_id") == "local-harness", "seed leaderboard row must use local-harness provider_id", errors)
 
 
 def validate(web_dir: Path) -> list[str]:

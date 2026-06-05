@@ -104,6 +104,16 @@ def validate() -> list[str]:
         require(isinstance(rows, list) and bool(rows), "leaderboard must include the verified baseline row", errors)
         if isinstance(rows, list) and rows:
             require(bool(rows[0].get("receipt_signature")), "verified leaderboard row must have a receipt signature", errors)
+            require(
+                rows[0].get("model_id") == "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+                "verified model response matching the seed hash must carry coder-model attribution",
+                errors,
+            )
+            require(
+                rows[0].get("provider_id") == "air5",
+                "verified model response matching the seed hash must carry air5 attribution",
+                errors,
+            )
         require(public_key.exists(), "contract run must publish an ed25519 public key", errors)
         require(bool(list(receipts_dir.glob("*.json"))), "contract run must write at least one receipt JSON", errors)
         code, output = run(

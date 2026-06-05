@@ -89,6 +89,21 @@ def validate() -> list[str]:
         "REPORT.md must include all PASS/FAIL criteria",
         errors,
     )
+    rows = payload.get("rows")
+    if isinstance(rows, list) and rows and payload.get("candidate_response_count") == 0:
+        row = rows[0]
+        require(isinstance(row, dict), "pending seed leaderboard row must be an object", errors)
+        if isinstance(row, dict):
+            require(
+                row.get("model_id") == "reference-baseline" and row.get("provider_id") == "local-harness",
+                "pending seed row must not claim live air5/coder-model attribution",
+                errors,
+            )
+            require(
+                "reference-baseline` / `local-harness" in actual,
+                "REPORT.md must document seed baseline attribution separately from live model attribution",
+                errors,
+            )
     return errors
 
 

@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS evaluations (
 );
 """
 
+SEED_MODEL_ID = "reference-baseline"
+SEED_PROVIDER_ID = "local-harness"
+
 
 def instruction_mnemonics(source: str) -> list[str]:
     mnemonics: list[str] = []
@@ -126,7 +129,31 @@ class Store:
             (candidate_hash, problem_id, source, score, verified, model_id, provider_id)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(candidate_hash) DO UPDATE SET
-                verified = MAX(candidates.verified, excluded.verified)
+                verified = MAX(candidates.verified, excluded.verified),
+                model_id = CASE
+                    WHEN candidates.model_id = 'reference-baseline'
+                        AND candidates.provider_id = 'local-harness'
+                        AND excluded.verified = 1
+                        AND excluded.model_id != 'reference-baseline'
+                    THEN excluded.model_id
+                    ELSE candidates.model_id
+                END,
+                provider_id = CASE
+                    WHEN candidates.model_id = 'reference-baseline'
+                        AND candidates.provider_id = 'local-harness'
+                        AND excluded.verified = 1
+                        AND excluded.model_id != 'reference-baseline'
+                    THEN excluded.provider_id
+                    ELSE candidates.provider_id
+                END,
+                discovered_at = CASE
+                    WHEN candidates.model_id = 'reference-baseline'
+                        AND candidates.provider_id = 'local-harness'
+                        AND excluded.verified = 1
+                        AND excluded.model_id != 'reference-baseline'
+                    THEN excluded.discovered_at
+                    ELSE candidates.discovered_at
+                END
             """,
             (candidate_hash, problem_id, source, score, int(verified), model_id, provider_id),
         )
@@ -134,10 +161,23 @@ class Store:
 
     def record_receipt(self, candidate_hash: str, receipt_path: Path, signature: str) -> None:
         self.db.execute(
-            "INSERT OR IGNORE INTO receipts (candidate_hash, receipt_path, signature) VALUES (?, ?, ?)",
+            """
+            INSERT INTO receipts (candidate_hash, receipt_path, signature)
+            VALUES (?, ?, ?)
+            ON CONFLICT(candidate_hash) DO UPDATE SET
+                receipt_path = excluded.receipt_path,
+                signature = excluded.signature
+            """,
             (candidate_hash, str(receipt_path), signature),
         )
         self.db.commit()
+
+    def candidate(self, problem_id: str, candidate_hash: str):
+        cur = self.db.execute(
+            "SELECT * FROM candidates WHERE problem_id = ? AND candidate_hash = ?",
+            (problem_id, candidate_hash),
+        )
+        return cur.fetchone()
 
     def record_evaluation(
         self,
