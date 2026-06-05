@@ -458,6 +458,8 @@ def test_write_report_renders_pending_state(tmp_path: Path) -> None:
     assert "Status: pending" in report
     assert "No PASS/FAIL verdict yet" in report
     assert "public launch is intentionally deferred" in report
+    assert "bin/ready-live-run.py" in report
+    assert "bin/validate-receipts.py" in report
 
 
 def test_write_report_renders_pass_b_evidence(tmp_path: Path) -> None:

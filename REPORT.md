@@ -32,8 +32,9 @@ This evidence is for manual PASS-C review only; automatic PASS-C still requires 
 ## Completion Gate Audit
 
 - Local repo, license, spec, README, problem module, sandbox, receipts, static leaderboard, and report artifacts are present.
-- Local verification currently proves the seed baseline, receipt verification, sandbox behavior, private GitHub visibility, and full pytest suite.
+- Local verification currently proves the seed baseline, receipt validation, web artifact validation, sandbox behavior, private GitHub visibility, and full pytest suite.
 - PASS/FAIL outcome is not yet available because the live air5 coder-model handoff, `MACPROVIDER_API_KEY`, and real search run are pending.
+- `bin/ready-live-run.py` exists as the aggregate gate and remains not-ready until the live operator environment passes preflight and air5 model checks.
 - Public deployment and DNS remain intentionally deferred until explicit launch approval.
 
 ## Current Evidence
@@ -43,8 +44,12 @@ This evidence is for manual PASS-C review only; automatic PASS-C still requires 
 - The native runner enforces the v0.1 candidate caps inside the generated verifier executable: 100 ms wall-clock by default and 256 MB address/data memory by default.
 - Seed receipt exists at `receipts/726c3e4c49b5.json` and is verifiable with `bin/verify-receipt.py`.
 - Static leaderboard contains the seed baseline row and run-summary counters.
+- `bin/validate-receipts.py` verifies leaderboard rows against signed receipt payloads.
+- `bin/validate-web.py` verifies the static leaderboard HTML/JSON contract.
+- `bin/audit-deliverables.py` records local BUILD_PROMPT deliverable status.
 - SQLite records every evaluated response separately from deduped candidates, preserving score, verification result, and sandbox/compiler error text.
 - `bin/summarize-run.py` and `bin/write-report.py` derive run status from the SQLite attempt/evaluation ledger.
+- `bin/ready-live-run.py` aggregates local validation, private repo preflight, credential, and air5 model blockers before live search.
 - The harness enforces `--max-candidate-responses` for live runs and continues past PASS-A by default so the same run can still probe for PASS-B/PASS-C.
 - `bin/preflight.py` and `bin/check-air5-model.py` exist for reproducible operator readiness and model visibility checks.
 - `bin/preflight.py` also verifies the GitHub repo remains private during the test phase unless `--allow-public-launch` is explicitly used after launch approval.
@@ -54,6 +59,7 @@ This evidence is for manual PASS-C review only; automatic PASS-C still requires 
 - Complete the air5 coder-model handoff.
 - Confirm live provider id and model availability with `bin/check-air5-model.py`.
 - Provide `MACPROVIDER_API_KEY` for authenticated model checks and live inference.
+- Run `bin/ready-live-run.py --run-tests --json` in the operator environment and resolve all blockers.
 - Run the search harness with `MACPROVIDER_API_KEY`.
 - Deploy `web/` to a preview/private target if needed. Configure `arm64golf.streamvc.live` only after explicit public launch approval.
 

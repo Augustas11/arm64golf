@@ -1,6 +1,6 @@
 # arm64golf v0.1 PoC Specification
 
-Status: Phase 1 draft committed before implementation
+Status: private-test implementation ready; live air5 run pending
 Owner: Augustas11
 License: MIT
 Harness language: Python 3.11+
@@ -538,6 +538,14 @@ uses the same evidence to regenerate `REPORT.md`. PASS-C from a verified
 16-instruction candidate is automatic; PASS-C from structural diversity remains
 a manual review item backed by the near-best structural fingerprints in
 `run_summary`.
+
+Before preview, launch, or a live search run, the operator validates the static
+surface with `bin/validate-web.py`, validates every leaderboard row against its
+signed receipt with `bin/validate-receipts.py`, audits BUILD_PROMPT
+deliverables with `bin/audit-deliverables.py`, and uses `bin/ready-live-run.py`
+as the aggregate readiness gate. The readiness gate is intentionally
+conservative: it must report no blockers in the operator environment before a
+live search starts.
 
 ## 9. Success Criteria
 
