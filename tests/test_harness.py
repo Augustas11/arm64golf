@@ -1262,8 +1262,10 @@ def test_ready_live_run_can_report_ready_when_all_checks_pass(monkeypatch) -> No
 
 def test_ablation_templates_include_failed_context() -> None:
     """The v0.2 failed_context template must exist alongside the original
-    no_failed_context / strict_no_memory / structural_hint variants; any
-    accidental rename would break --template selection on the CLI."""
+    no_failed_context / strict_no_memory / structural_hint variants, and
+    the v0.3 post-canary instruction-count variants must also be
+    registered. Any accidental rename would break --template selection
+    on the CLI."""
     from harness.prompts import ABLATION_TEMPLATES
 
     assert set(ABLATION_TEMPLATES.keys()) == {
@@ -1271,7 +1273,50 @@ def test_ablation_templates_include_failed_context() -> None:
         "strict_no_memory",
         "structural_hint",
         "failed_context",
+        "pass_b_target",
+        "csel_hint",
+        "dual_example",
     }
+
+
+def test_pass_b_target_templates_pin_target_to_17_regardless_of_best() -> None:
+    """v0.3 produced verified non-baseline routines at 24 instructions.
+    Without a hard pin, --template csel_hint with current_best=24 would
+    ask the model for "23 instructions" — useless for PASS-B. The
+    instruction-count variants must pin target_count to 17 regardless
+    of what the current leaderboard best is."""
+    from harness.prompts import build_prompt, PASS_B_TARGET_TEMPLATES
+
+    for template in PASS_B_TARGET_TEMPLATES:
+        body = build_prompt(
+            assembly="cmp x0, x1\ncsetm x3, gt",
+            instruction_count=24,
+            template=template,
+        )[-1]["content"]
+        assert "with 17 instructions" in body, (
+            f"{template} must hard-pin target_count to 17 (PASS-B threshold), "
+            f"not drift with the current leaderboard best"
+        )
+
+
+def test_pass_b_target_variants_carry_their_signature_hint() -> None:
+    """Each v0.3 variant must include its distinguishing language so
+    --template selection actually changes prompt content. Catches the
+    failure mode where someone aliases all three variants to the same
+    block by mistake."""
+    from harness.prompts import build_prompt
+
+    pass_b_body = build_prompt("cmp x0, x1", 18, template="pass_b_target")[-1]["content"]
+    assert "STRICTLY FEWER than 18" in pass_b_body
+    assert "Count" in pass_b_body and "instructions before emitting" in pass_b_body
+
+    csel_body = build_prompt("cmp x0, x1", 18, template="csel_hint")[-1]["content"]
+    assert "csel" in csel_body and "compare-swap" in csel_body
+    assert "cmp  x0, x1" in csel_body  # worked example present
+
+    dual_body = build_prompt("cmp x0, x1", 18, template="dual_example")[-1]["content"]
+    assert "tie the baseline" in dual_body
+    assert "24 instructions" in dual_body
 
 
 def test_failed_context_template_surfaces_edge_cases_and_isa_pitfalls() -> None:
