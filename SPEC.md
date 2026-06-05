@@ -23,7 +23,7 @@ v0.1 is intentionally small:
 - one model: `mlx-community/Qwen2.5-Coder-7B-Instruct-4bit`
 - one verifier: deterministic local sandboxed checking
 - one attestation primitive: ed25519 signed receipts per verified candidate
-- one public surface: a static leaderboard
+- one eventual public surface: a static leaderboard, private during testing
 
 ### 1.2 PoC Questions
 

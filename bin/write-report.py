@@ -85,6 +85,18 @@ def render_report(problem_id: str, summary: dict[str, object]) -> str:
 
     lines.extend(
         [
+            "## Completion Gate Audit",
+            "",
+            "- Local repo, license, spec, README, problem module, sandbox, receipts, static leaderboard, and report artifacts are present.",
+            "- Local verification currently proves the seed baseline, receipt verification, sandbox behavior, private GitHub visibility, and full pytest suite.",
+            "- PASS/FAIL outcome is not yet available because the live air5 coder-model handoff, `MACPROVIDER_API_KEY`, and real search run are pending.",
+            "- Public deployment and DNS remain intentionally deferred until explicit launch approval.",
+            "",
+        ]
+    )
+
+    lines.extend(
+        [
             "## Current Evidence",
             "",
             "- Private GitHub repo exists at `https://github.com/Augustas11/arm64golf`; public launch is intentionally deferred.",

@@ -61,6 +61,16 @@ main {
   margin: 0 auto;
 }
 
+.status-banner {
+  margin-top: 18px;
+  padding: 11px 14px;
+  border: 1px solid #f0c38d;
+  background: #fff8ee;
+  color: #7c2d12;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .overview {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.7fr);

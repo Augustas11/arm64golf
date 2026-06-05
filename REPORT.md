@@ -29,6 +29,13 @@ No PASS/FAIL verdict yet. The search has not started because the air5 operator h
 
 This evidence is for manual PASS-C review only; automatic PASS-C still requires a verified 16-instruction candidate.
 
+## Completion Gate Audit
+
+- Local repo, license, spec, README, problem module, sandbox, receipts, static leaderboard, and report artifacts are present.
+- Local verification currently proves the seed baseline, receipt verification, sandbox behavior, private GitHub visibility, and full pytest suite.
+- PASS/FAIL outcome is not yet available because the live air5 coder-model handoff, `MACPROVIDER_API_KEY`, and real search run are pending.
+- Public deployment and DNS remain intentionally deferred until explicit launch approval.
+
 ## Current Evidence
 
 - Private GitHub repo exists at `https://github.com/Augustas11/arm64golf`; public launch is intentionally deferred.
