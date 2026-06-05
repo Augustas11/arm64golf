@@ -5,8 +5,9 @@ Status: pass-c
 ## Network configuration this canary depended on
 
 The v0.3 canary and the v0.3 post-canary probes (csel_hint,
-dual_example) all ran against production MacProvider at
-api.streamvc.live, with the following non-default config in effect:
+dual_example, temperature sweep) all ran against production
+MacProvider at api.streamvc.live, with the following non-default
+config in effect:
 
 - `gateway.timeouts.coordinator_header_timeout_seconds: 60` (default: 10;
   bumped 2026-06-05 because a 10s ceiling truncated any non-streaming
@@ -55,57 +56,70 @@ deterministic test cases through the sandboxed runner) and the
 leaderboard claim is honest, but the credit for the compression
 goes to the prompt engineer, not to model search.
 
-## Search Discovery — what the dual_example probe found
+## Search Discovery — what the post-canary probes found
 
-Hypothesis going in: if `csel_hint` worked because the prompt handed
-over the pattern, then a prompt that withholds the pattern (but
-still surfaces the goal — "verified routines at 18 and 24 exist;
-find something denser") would tell us whether Qwen2.5-Coder-7B-4bit
-can search for structure on its own.
+The dual_example probe (200-cap, withholds the csel pattern but
+still names the goal) and the temperature sweep (dual_example ×
+temp ∈ {0.3, 0.5, 0.9}, 32-call segments at each setting) together
+test whether Qwen2.5-Coder-7B-4bit can search for denser structure
+on its own:
 
-Probe: 200-cap, `--template dual_example`, `--no-stop-on-verdict`,
-same n=8 fan-out, same temp=0.7 / top_p=0.95 sampling as the
-canary. Result:
+| stage | new evals | verified | unique verified hashes | best score |
+|---|---|---|---|---|
+| dual_example @ temp=0.7 | 93 | 21 | +2 (lt-variant 12, redundant 16) | 12 |
+| temp=0.3 segment | 22 | 18 | +0 | 12 |
+| temp=0.5 segment | 21 | 13 | +0 | 12 |
+| temp=0.9 segment | 22 | 4 | +0 | 12 |
 
-- `best_verified_score` stayed at 12 (carried over from `csel_hint`).
-  Zero verified candidates below the handed-over floor.
-- One new verified 12-instruction routine (`b4d6f989140e`) appeared
-  — the previous csel routine with `lt` swapped for `le`. A
-  trivial micro-mutation of what the model saw as "Current best:"
-  in the prompt, not a new structure.
-- One new verified 16-instruction routine (`9fa2d622fdae`) — the
-  same csel block tiled **four** times instead of three, i.e. a
-  redundant compare-swap. Correct but strictly worse than the
-  3-tile floor.
-- `case 1 failed` (all-equal triple) spiked to 68x in this probe,
-  `case 2 failed` (already-ascending) to 37x. Vs the v0.3 canary's
-  15x and 18x respectively. Without the csel pattern in the prompt,
-  the model regressed to unconditional-swap routines that fail the
-  edge-case sentinels — i.e. `csel_hint` was acting as training
-  wheels for both compression *and* edge-case correctness, not
-  just compression.
+Across the four probes (158 new evaluations, 56 new verified
+candidates), **only two unique verified hashes appeared, both at
+score 12, both csel-tile variants** (`57b2aa236342` with `le`,
+`b4d6f989140e` with `lt`). Zero candidates below 12. Zero new
+structures.
 
-**Reading:** for Qwen2.5-Coder-7B-Instruct-4bit on air5 under the
-v0.3 prompt family, the instruction-count floor is **12, reachable
-only when the prompt names the csel pattern explicitly**. Removing
-the pattern doesn't unlock discovery — the model produces more
-failed routines plus micro-mutations of whatever the leaderboard
-already shows. Search-discovery on this model is not happening at
-this prompt sophistication; the binding constraint is the prompt
-plus the model, not the sample size.
+Per-temperature pattern:
+- Lower temperature converges the model on whatever it considers the
+  best routine — at 0.3, 18 of 22 evaluations verified, all at 12,
+  only 4 case-1 failures.
+- Higher temperature buys broken ARM64, not creative compression. At
+  0.9, the verified rate collapses to 4/22, case-1 failures spike to
+  14, and the verified pile is still nothing but the same csel
+  pattern.
+
+Error mode shift confirms the reading. The dual_example block did
+NOT carry the csel pattern, so without that scaffolding the model
+regressed to unconditional-swap routines: case-1 (all-equal triple)
+failures climbed from 15x in the v0.3 canary to 92x across the
+combined probes, and case-2 (already-ascending) from 18x to 43x.
+csel_hint was acting as training wheels for both compression *and*
+edge-case correctness, not just compression.
+
+**Reading.** For Qwen2.5-Coder-7B-Instruct-4bit on air5 under the
+v0.3 prompt family and the sampling temperatures we tested, the
+instruction-count floor is **12, reachable only when the prompt
+names the csel pattern explicitly**. The model appears to have
+exactly two sort3 routines in its working repertoire — the
+18-instruction bitmask-eor pattern (the baseline shape) and the
+12-instruction csel pattern — and only produces the latter under
+explicit prompting. More tokens of the same prompt and more
+sampling temperatures do not unlock new structure.
 
 Caveats on the reading:
 
-- One probe per prompt, n=8 fan-out at temp=0.7/top_p=0.95. A
-  sampling sweep (temp ∈ {0.3, 0.5, 0.9}) has not been run yet.
-  Discovery is sensitive to temperature; the 7B-floor claim is
-  contingent on the current sampling settings.
+- Prompt sophistication has not been exhausted. Chain-of-thought,
+  self-critique loops, and instruction-deletion framings have not
+  been tried. Calibrated prior on whether CoT breaks the 12-floor
+  on 7B: ~15%. CoT may extract one or two saved instructions if
+  there is a denser pattern adjacent in the model's training
+  distribution; it is unlikely to surface fundamentally new
+  structure that 200 + 65 dual_example samples failed to find.
 - 7B-4bit is on the small end of modern coding models. The
-  marketplace test ("same probe against a different provider /
-  model on MacProvider") would distinguish model-capability from
-  prompt-engineering as the binding constraint. That measurement
-  is exactly the arm64golf product story and is the next obvious
-  step once a second (provider, model) is available.
+  marketplace test — same harness, same prompts, same sort3
+  problem, different (provider, model) pair on MacProvider — is
+  the cleanest experiment to disambiguate model-capability from
+  prompt-engineering as the binding constraint. It is exactly the
+  arm64golf product story and is the next obvious step once a
+  second (provider, model) is available on the network.
 
 ## Verdict
 
@@ -114,13 +128,13 @@ Current derived verdict: PASS-C.
 ## Run Evidence
 
 - problem: `sort3-arm64`
-- attempts: 62
-- requested candidates: 496
-- candidate responses: 208
-- evaluated responses: 208
-- verified evaluations: 76
-- failed evaluations: 132
-- evaluations with error text: 132
+- attempts: 74
+- requested candidates: 592
+- candidate responses: 273
+- evaluated responses: 273
+- verified evaluations: 111
+- failed evaluations: 162
+- evaluations with error text: 162
 - best verified score: 12
 - first verified response: 2
 - first 17-instruction response: 115
@@ -136,8 +150,8 @@ This evidence is for manual PASS-C review only; automatic PASS-C still requires 
 
 ## Top Evaluation Errors
 
-- 68x case 1 failed
-- 37x case 2 failed
+- 92x case 1 failed
+- 43x case 2 failed
 - 1x /private/tmp/arm64golf-sandbox/run-2478qtx3/candidate.s:7:5: error: unrecognized instruction mnemonic
     teqz x3, x3
     ^

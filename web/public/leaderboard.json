@@ -1,9 +1,9 @@
 {
-  "attempt_count": 62,
-  "candidate_response_count": 208,
+  "attempt_count": 74,
+  "candidate_response_count": 273,
   "last_update": "2026-06-05T22:04:45Z",
   "problem_id": "sort3-arm64",
-  "requested_candidate_count": 496,
+  "requested_candidate_count": 592,
   "rows": [
     {
       "candidate_hash": "57b2aa2363428e955d361e45d4204a9c6bf9cf205fe32ec94d4ed4813ac5a2ff",
@@ -12,8 +12,8 @@
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
       "rank": 1,
-      "receipt_signature": "sAvEQwR54gpBdJYDjmbBKpuZyN4nZ+17rPSC/ccpm4aMUPFGWqhxoJUHm2QpBpNuxjLCITUgUBAbs6i6qLg/CQ==",
-      "receipt_signature_short": "sAvEQwR54gpBdJYD",
+      "receipt_signature": "wkwPk0Wbwx2Use1eJ5CwcAVk1v85lBwTrL9z1QkDLCkoiDv6Ytrfzdh10vrYvCT90F34NWSGy5EhmhKdUcDXCw==",
+      "receipt_signature_short": "wkwPk0Wbwx2Use1e",
       "score": 12
     },
     {
@@ -23,8 +23,8 @@
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
       "rank": 2,
-      "receipt_signature": "A4w681hTy7LUfOcuudOo8EHJVcFaRUBvNGTENRl3ExB4d6MOKLh6tVt/GTVk3sE1iZDT/j9+HebaWXmqPt6pDw==",
-      "receipt_signature_short": "A4w681hTy7LUfOcu",
+      "receipt_signature": "V9fz/L7Mcgi1uigYBi3YrKCcNUcjde/0lR1E32ZF2B2z6dW+RFrqgfukJoY/tMCir1zS3+svSxOldDA6JfwfDQ==",
+      "receipt_signature_short": "V9fz/L7Mcgi1uigY",
       "score": 12
     },
     {
@@ -45,8 +45,8 @@
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
       "rank": 4,
-      "receipt_signature": "bI2uubh4hENIpowRdlMOnKCCkAlraszh1jwY3ylXBZZP9KxnlFW3HiaS3bgAvuh2NL5H10HVRNSsc+dXJEogCg==",
-      "receipt_signature_short": "bI2uubh4hENIpowR",
+      "receipt_signature": "/s4mz1uZdxFgCaaI7d08u6JtAMenG99xHZu5PsMSgOVDCAlCCcJ1NeMhVzZorKEuCnZl9kRTb31iTHwSFHUxAA==",
+      "receipt_signature_short": "/s4mz1uZdxFgCaaI",
       "score": 18
     },
     {
@@ -84,12 +84,12 @@
     }
   ],
   "run_summary": {
-    "attempt_count": 62,
+    "attempt_count": 74,
     "best_verified_score": 12,
-    "candidate_response_count": 208,
-    "evaluation_count": 208,
-    "evaluation_error_count": 132,
-    "failed_evaluation_count": 132,
+    "candidate_response_count": 273,
+    "evaluation_count": 273,
+    "evaluation_error_count": 162,
+    "failed_evaluation_count": 162,
     "first_16_response": 115,
     "first_17_response": 115,
     "first_verified_response": 2,
@@ -118,14 +118,14 @@
       }
     ],
     "near_best_unique_structure_count": 1,
-    "requested_candidate_count": 496,
+    "requested_candidate_count": 592,
     "top_evaluation_errors": [
       {
-        "count": 68,
+        "count": 92,
         "error": "case 1 failed"
       },
       {
-        "count": 37,
+        "count": 43,
         "error": "case 2 failed"
       },
       {
@@ -141,6 +141,6 @@
         "error": "/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:7:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x4, x0, x1\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:9:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x0, x0, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:10:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x1, x1, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:13:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x4, x1, x2\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:15:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x1, x1, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:16:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x2, x2, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:19:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x4, x0, x1\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:21:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x0, x0, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:22:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x1, x1, x4\n    ^"
       }
     ],
-    "verified_evaluation_count": 76
+    "verified_evaluation_count": 111
   }
 }
