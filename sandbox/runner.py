@@ -12,6 +12,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROFILE = REPO_ROOT / "sandbox" / "profile.sb"
 TMP_ROOT = Path("/private/tmp/arm64golf-sandbox")
+DEFAULT_MEMORY_LIMIT_MB = 256
 
 
 class SandboxUnavailable(RuntimeError):
@@ -22,11 +23,20 @@ def sandbox_available() -> bool:
     return shutil.which("sandbox-exec") is not None and sys.platform == "darwin"
 
 
-def run_candidate(problem_dir: Path, source: str, timeout_ms: int = 100) -> dict[str, object]:
+def run_candidate(
+    problem_dir: Path,
+    source: str,
+    timeout_ms: int = 100,
+    memory_limit_mb: int = DEFAULT_MEMORY_LIMIT_MB,
+) -> dict[str, object]:
     if not sandbox_available():
         raise SandboxUnavailable("sandbox-exec is available only on macOS hosts")
     if shutil.which("clang") is None:
         raise SandboxUnavailable("clang is required to assemble native ARM64 candidates")
+    if timeout_ms <= 0:
+        raise ValueError("timeout_ms must be positive")
+    if memory_limit_mb <= 0:
+        raise ValueError("memory_limit_mb must be positive")
 
     TMP_ROOT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="run-", dir=TMP_ROOT) as tmp:
@@ -41,7 +51,9 @@ def run_candidate(problem_dir: Path, source: str, timeout_ms: int = 100) -> dict
         module = load_problem_module(problem_dir)
         candidate = module.load(source)
         asm_path.write_text(native_assembly(candidate.normalized_source))
-        main_path.write_text(native_harness_c(module.load_tests()))
+        main_path.write_text(
+            native_harness_c(module.load_tests(), timeout_ms=timeout_ms, memory_limit_mb=memory_limit_mb)
+        )
 
         compile_proc = subprocess.run(
             ["clang", str(main_path), str(asm_path), "-o", str(exe_path)],
@@ -63,16 +75,14 @@ def run_candidate(problem_dir: Path, source: str, timeout_ms: int = 100) -> dict
             }
 
         cmd = ["sandbox-exec", "-f", str(PROFILE), str(exe_path)]
+        process_timeout_s = max(timeout_ms / 1000 + 1.0, 2.0)
         proc = subprocess.run(
             cmd,
             cwd=REPO_ROOT,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            # This covers sandbox process startup plus the fixed 1200-case C
-            # harness. The v0.1 candidate budget remains part of module.toml;
-            # enforcing per-routine CPU timing belongs in the native harness.
-            timeout=max(timeout_ms / 1000, 5),
+            timeout=process_timeout_s,
             check=False,
         )
 
@@ -83,6 +93,8 @@ def run_candidate(problem_dir: Path, source: str, timeout_ms: int = 100) -> dict
             "candidate_hash": candidate.candidate_hash,
             "score": module.score(candidate),
             "returncode": proc.returncode,
+            "timeout_ms": timeout_ms,
+            "memory_limit_mb": memory_limit_mb,
             "error": proc.stderr.strip() or proc.stdout.strip(),
         }
 
@@ -115,14 +127,25 @@ _run_one:
 """
 
 
-def native_harness_c(cases: list[dict[str, list[int]]]) -> str:
+def native_harness_c(
+    cases: list[dict[str, list[int]]],
+    timeout_ms: int = 100,
+    memory_limit_mb: int = DEFAULT_MEMORY_LIMIT_MB,
+) -> str:
     rows = []
     for case in cases:
         values = case["input"] + case["output"]
         rows.append("    {" + ", ".join(c_int64(value) for value in values) + "},")
     joined = "\n".join(rows)
+    timeout_sec = timeout_ms // 1000
+    timeout_usec = (timeout_ms % 1000) * 1000
+    memory_limit_bytes = memory_limit_mb * 1024 * 1024
     return f"""#include <stdint.h>
+#include <signal.h>
 #include <stdio.h>
+#include <sys/resource.h>
+#include <sys/time.h>
+#include <unistd.h>
 
 extern void run_one(int64_t out[3], int64_t a, int64_t b, int64_t c);
 
@@ -139,7 +162,36 @@ static const Case cases[] = {{
 {joined}
 }};
 
+static void timeout_handler(int signum) {{
+    (void)signum;
+    _exit(124);
+}}
+
+static void arm_timeout(void) {{
+    signal(SIGALRM, timeout_handler);
+    struct itimerval timer = {{
+        .it_value = {{ .tv_sec = {timeout_sec}, .tv_usec = {timeout_usec} }},
+        .it_interval = {{ .tv_sec = 0, .tv_usec = 0 }},
+    }};
+    if (setitimer(ITIMER_REAL, &timer, NULL) != 0) {{
+        _exit(125);
+    }}
+}}
+
+static void cap_memory(void) {{
+    const rlim_t limit = (rlim_t){memory_limit_bytes};
+    struct rlimit mem = {{ .rlim_cur = limit, .rlim_max = limit }};
+#ifdef RLIMIT_AS
+    setrlimit(RLIMIT_AS, &mem);
+#endif
+#ifdef RLIMIT_DATA
+    setrlimit(RLIMIT_DATA, &mem);
+#endif
+}}
+
 int main(void) {{
+    cap_memory();
+    arm_timeout();
     for (unsigned long i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {{
         int64_t out[3] = {{0, 0, 0}};
         run_one(out, cases[i].a, cases[i].b, cases[i].c);
@@ -162,11 +214,17 @@ def main() -> int:
     parser.add_argument("--problem", type=Path, default=REPO_ROOT / "problems" / "sort3-arm64")
     parser.add_argument("--candidate", type=Path)
     parser.add_argument("--timeout-ms", type=int, default=100)
+    parser.add_argument("--memory-limit-mb", type=int, default=DEFAULT_MEMORY_LIMIT_MB)
     args = parser.parse_args()
 
     module_dir = args.problem
     source = args.candidate.read_text() if args.candidate else (module_dir / "reference.s").read_text()
-    print(json.dumps(run_candidate(module_dir, source, timeout_ms=args.timeout_ms), sort_keys=True))
+    print(
+        json.dumps(
+            run_candidate(module_dir, source, timeout_ms=args.timeout_ms, memory_limit_mb=args.memory_limit_mb),
+            sort_keys=True,
+        )
+    )
     return 0
 
 

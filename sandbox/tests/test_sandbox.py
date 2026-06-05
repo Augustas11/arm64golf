@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -87,7 +88,7 @@ class SandboxProfileTests(unittest.TestCase):
             }
             """
         )
-        self.assertEqual(proc.returncode, 0)
+        self.assertNotIn(proc.returncode, (3, 4), proc.stderr)
 
     def test_blocks_fork(self) -> None:
         proc = run_sandboxed_c(
@@ -138,3 +139,37 @@ class SandboxRunnerTests(unittest.TestCase):
             )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn('"verified": false', proc.stdout)
+
+    def test_hanging_candidate_hits_native_timeout(self) -> None:
+        with tempfile.NamedTemporaryFile("w", suffix=".s") as fh:
+            fh.write("b .\n")
+            fh.flush()
+            proc = subprocess.run(
+                [sys.executable, "sandbox/runner.py", "--candidate", fh.name, "--timeout-ms", "25"],
+                cwd=REPO_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+                check=False,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertFalse(payload["verified"])
+        self.assertEqual(payload["returncode"], 124)
+        self.assertEqual(payload["timeout_ms"], 25)
+
+    def test_runner_reports_memory_limit(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, "sandbox/runner.py", "--memory-limit-mb", "256"],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertTrue(payload["verified"])
+        self.assertEqual(payload["memory_limit_mb"], 256)

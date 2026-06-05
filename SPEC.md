@@ -155,6 +155,7 @@ os = "macos"
 
 [eval]
 time_budget_ms = 100
+memory_budget_mb = 256
 min_tests = 1000
 
 [sandbox]
@@ -165,7 +166,8 @@ process_spawn = "deny"
 ```
 
 The schema captures the minimum swap cost for future modules: hardware
-requirements, time budget per candidate, sandbox profile, and license.
+requirements, time and memory budget per candidate, sandbox profile, and
+license.
 
 ### 2.6 Harness Boundary
 
@@ -394,8 +396,9 @@ syscalls.
 
 ### 6.4 Caps
 
-Each candidate run has a 100 ms wall-clock cap, a documented memory cap, and
-bounded stdout/stderr capture.
+Each candidate run has a 100 ms wall-clock cap, a 256 MB address/data memory
+cap, and bounded stdout/stderr capture. The generated verifier executable arms
+the memory cap and interval timer before calling the candidate routine.
 
 ### 6.5 Sandbox Tests
 

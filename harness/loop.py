@@ -25,8 +25,13 @@ def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def sandbox_verify(problem_dir: Path, module, candidate, timeout_ms: int) -> bool:
-    result = run_sandboxed_candidate(problem_dir, candidate.normalized_source, timeout_ms=timeout_ms)
+def sandbox_verify(problem_dir: Path, module, candidate, timeout_ms: int, memory_limit_mb: int) -> bool:
+    result = run_sandboxed_candidate(
+        problem_dir,
+        candidate.normalized_source,
+        timeout_ms=timeout_ms,
+        memory_limit_mb=memory_limit_mb,
+    )
     if not result.get("ok"):
         raise RuntimeError(str(result.get("error", "sandbox runner failed")))
     return bool(result.get("verified"))
@@ -65,10 +70,19 @@ def load_mock_responses(path: str) -> list[str]:
     return [text]
 
 
-def seed_baseline(store: Store, args: argparse.Namespace, problem_dir: Path, module, model_id: str, provider_id: str, timeout_ms: int) -> None:
+def seed_baseline(
+    store: Store,
+    args: argparse.Namespace,
+    problem_dir: Path,
+    module,
+    model_id: str,
+    provider_id: str,
+    timeout_ms: int,
+    memory_limit_mb: int,
+) -> None:
     count, source = module.baseline()
     candidate = module.load(source)
-    verified = sandbox_verify(problem_dir, module, candidate, timeout_ms)
+    verified = sandbox_verify(problem_dir, module, candidate, timeout_ms, memory_limit_mb)
     store.record_candidate(
         candidate_hash=candidate.candidate_hash,
         problem_id=candidate.problem_id,
@@ -89,7 +103,7 @@ def run(args: argparse.Namespace) -> int:
     model_id = args.model
     provider_id = args.provider
 
-    seed_baseline(store, args, problem_dir, module, model_id, provider_id, args.timeout_ms)
+    seed_baseline(store, args, problem_dir, module, model_id, provider_id, args.timeout_ms, args.memory_limit_mb)
 
     if args.seed_only:
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
@@ -125,7 +139,7 @@ def run(args: argparse.Namespace) -> int:
             store.record_attempt(module.PROBLEM_ID, args.template, "ok")
         for response in responses:
             candidate = module.load(extract_assembly(response))
-            verified = sandbox_verify(problem_dir, module, candidate, args.timeout_ms)
+            verified = sandbox_verify(problem_dir, module, candidate, args.timeout_ms, args.memory_limit_mb)
             store.record_candidate(
                 candidate_hash=candidate.candidate_hash,
                 problem_id=candidate.problem_id,
@@ -158,6 +172,7 @@ def main() -> int:
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--template", default="no_failed_context")
     parser.add_argument("--timeout-ms", type=int, default=100)
+    parser.add_argument("--memory-limit-mb", type=int, default=256)
     parser.add_argument("--mock-response-file", default="")
     parser.add_argument("--seed-only", action="store_true")
     return run(parser.parse_args())

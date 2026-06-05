@@ -13,13 +13,17 @@ handoff and live MacProvider credentials are still pending.
   `main` has been pushed there. GitHub reports visibility `PRIVATE`.
 - Baseline candidate verifies locally on 1200 deterministic `sort3-arm64`
   tests through the native ARM64 sandbox runner.
+- The native runner enforces the v0.1 candidate caps inside the generated
+  verifier executable: 100 ms wall-clock by default and 256 MB address/data
+  memory by default.
 - Baseline score is 18 instructions.
 - Seed receipt exists at `receipts/726c3e4c49b5.json`.
 - Receipt verification passes with `bin/verify-receipt.py`.
 - Static leaderboard contains the seed baseline row.
 - `sandbox/profile.sb` starts from deny-by-default and the native sandbox test
   suite blocks filesystem read, filesystem write, network connect, fork, and
-  external exec probes.
+  external exec probes. It also verifies that a non-returning candidate is
+  terminated by the native timeout path.
 - The harness has an offline `--mock-response-file` smoke path that records a
   synthetic attempt through native sandbox verification, scoring, receipt
   signing, SQLite persistence, and leaderboard export without MacProvider
