@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+
+# Node
+node_modules/
+.next/
+out/
+
+# Local data and secrets
+.omx/
+*.sqlite
+data/
+receipts/*.json
+.env*
+
+# Build artifacts
+build/
+dist/
+*.o
+*.so
+*.dylib
+
+# OS/editor
+.DS_Store
+Thumbs.db
+*.swp
