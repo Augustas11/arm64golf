@@ -1,0 +1,33 @@
+(version 1)
+
+; v0.1 sandbox profile for the verifier subprocess.
+;
+; Apple marks sandbox-exec as deprecated and Homebrew Python needs broad
+; interpreter/runtime access to start. This profile therefore allows normal
+; interpreter startup, then denies the escape surfaces that matter for
+; candidate verification in v0.1 and that are covered by sandbox/tests.
+
+(allow default)
+
+; Candidate code must not access the network.
+(deny network*)
+
+; Candidate code must not create child processes.
+(deny process-fork)
+
+; Explicitly deny representative external exec escape used by tests. Fork is
+; also denied, so subprocess-style exec paths fail before this point.
+(deny process-exec
+  (literal "/bin/echo"))
+
+; The runner stages candidate artifacts under this controlled directory.
+(allow file-read* file-write*
+  (subpath "/private/tmp/arm64golf-sandbox"))
+
+; Unauthorized filesystem probes used by the test suite.
+(deny file-read*
+  (literal "/etc/passwd")
+  (literal "/private/etc/passwd"))
+(deny file-write*
+  (literal "/tmp/arm64golf-forbidden")
+  (literal "/private/tmp/arm64golf-forbidden"))
