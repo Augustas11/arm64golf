@@ -113,18 +113,8 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
         ),
         AuditItem(
             "sort3_module",
-            "complete"
-            if all(
-                file_exists(path)
-                for path in [
-                    "problems/sort3-arm64/module.toml",
-                    "problems/sort3-arm64/reference.s",
-                    "problems/sort3-arm64/tests.json",
-                    "problems/sort3-arm64/module.py",
-                ]
-            )
-            else "missing",
-            "sort3-arm64 module files are present",
+            "complete" if sort3_module_validator_ok() else "missing",
+            "sort3-arm64 contract validates: manifest, 18-instruction reference, 1000+ tests, and baseline verifier",
         ),
         AuditItem(
             "harness",
@@ -225,6 +215,11 @@ def web_validator_ok() -> bool:
 
 def receipt_validator_ok() -> bool:
     code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-receipts.py"), "--json"])
+    return code == 0
+
+
+def sort3_module_validator_ok() -> bool:
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-sort3-module.py"), "--json"])
     return code == 0
 
 

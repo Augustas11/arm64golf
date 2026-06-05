@@ -30,6 +30,22 @@ def test_load_sort3_module_and_verify_baseline() -> None:
     assert module.verify(candidate)
 
 
+def test_validate_sort3_module_accepts_current_contract() -> None:
+    script = load_script("bin/validate-sort3-module.py")
+    assert script.validate(Path("problems/sort3-arm64")) == []
+
+
+def test_validate_sort3_module_rejects_too_few_tests(tmp_path: Path) -> None:
+    script = load_script("bin/validate-sort3-module.py")
+    problem_dir = tmp_path / "sort3-arm64"
+    problem_dir.mkdir()
+    (problem_dir / "module.toml").write_text(Path("problems/sort3-arm64/module.toml").read_text())
+    (problem_dir / "tests.json").write_text(json.dumps([{"input": [3, 1, 2], "output": [1, 2, 3]}]))
+
+    errors = script.validate(problem_dir)
+    assert any("at least 1000 cases" in error for error in errors)
+
+
 def test_parse_chat_response_returns_all_choices() -> None:
     raw = b'{"choices":[{"message":{"content":"cmp x0, x1"}},{"message":{"content":"ret"}}]}'
     assert parse_chat_response(raw) == ["cmp x0, x1", "ret"]
@@ -631,6 +647,18 @@ def test_deliverable_audit_offline_mode_skips_visibility(monkeypatch) -> None:
     result = script.git_repo_status(check_visibility=False)
     assert result.status == "pending"
     assert "offline mode" in result.summary
+
+
+def test_deliverable_audit_uses_sort3_contract_validator(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+    monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: False)
+    monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+
+    items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
+    assert items["sort3_module"].status == "missing"
+    assert "contract validates" in items["sort3_module"].summary
 
 
 def test_validate_web_accepts_current_static_assets() -> None:
