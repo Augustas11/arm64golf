@@ -1202,3 +1202,69 @@ def test_ready_live_run_can_report_ready_when_all_checks_pass(monkeypatch) -> No
     payload = script.readiness(args)
     assert payload["ready"] is True
     assert payload["blockers"] == []
+
+
+# --- prompt templates ---------------------------------------------------------
+
+def test_ablation_templates_include_failed_context() -> None:
+    """The v0.2 failed_context template must exist alongside the original
+    no_failed_context / strict_no_memory / structural_hint variants; any
+    accidental rename would break --template selection on the CLI."""
+    from harness.prompts import ABLATION_TEMPLATES
+
+    assert set(ABLATION_TEMPLATES.keys()) == {
+        "no_failed_context",
+        "strict_no_memory",
+        "structural_hint",
+        "failed_context",
+    }
+
+
+def test_failed_context_template_surfaces_edge_cases_and_isa_pitfalls() -> None:
+    """The v0.1 canary's dominant failure modes were `case 1 failed`
+    (all-equal triple) and `case 2 failed` (already-sorted ascending), plus
+    occasional ISA confusion (`xor` from x86; `eors` mis-spelling of `eor`).
+    The failed_context template exists exactly to surface these to the model,
+    so this test pins each as a hard requirement on the prompt body."""
+    from harness.prompts import build_prompt
+
+    messages = build_prompt(
+        assembly="cmp x0, x1\ncsetm x3, gt",
+        instruction_count=18,
+        template="failed_context",
+    )
+    assert messages[0]["role"] == "system"
+    body = messages[-1]["content"]
+
+    # Edge-case 1: all-equal (case 1 in tests.json)
+    assert "x0=0, x1=0, x2=0" in body
+    # Edge-case 2: already ascending (case 2 in tests.json)
+    assert "x0=1, x1=2, x2=3" in body
+    # Signed-extremes (case 5 in tests.json) — wider int64 reasoning
+    assert "9223372036854775807" in body
+    # ISA pitfalls explicitly called out
+    assert "eor" in body and "xor" in body  # the contrast must be present
+    assert "eors" in body  # the typo we observed in the canary
+
+
+def test_failed_context_template_preserves_target_count_one_below_current() -> None:
+    """The whole search depends on the model being asked for INSTR_COUNT-1
+    instructions. failed_context must not break that contract."""
+    from harness.prompts import build_prompt
+
+    body = build_prompt(
+        assembly="cmp x0, x1",
+        instruction_count=17,
+        template="failed_context",
+    )[-1]["content"]
+    assert "Propose a variant with 16 instructions" in body
+
+
+def test_non_failed_context_templates_do_not_leak_edge_case_block() -> None:
+    """Existing ablation templates must NOT carry the new edge-case block.
+    They exist precisely to isolate that variable in the search."""
+    from harness.prompts import build_prompt
+
+    for tmpl in ("no_failed_context", "strict_no_memory", "structural_hint"):
+        body = build_prompt("cmp x0, x1", 17, template=tmpl)[-1]["content"]
+        assert "case 1 failed" not in body and "9223372036854775807" not in body, tmpl
