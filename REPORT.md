@@ -26,14 +26,11 @@ completions payload) so the 60s timeouts behave as a fallback rather
 than a load-bearing knob. The bound was implicit during the v0.3
 canary (default).
 
-## Verdict
+## Verdict Interpretation
 
-Current derived verdict: PASS-A.
-
-### Interpretation: technical vs substantive PASS-A
-
-The harness's auto-derived verdict is PASS-A whenever any verified
-candidate exists. Two readings need to be kept distinct:
+The harness's auto-derived verdict (recorded verbatim in the
+`## Verdict` section below) is PASS-A whenever any verified candidate
+exists. Two readings need to be kept distinct:
 
 - **PASS-A (technical)** — at least one verified candidate, regardless
   of whether its normalized hash matches the baseline `726c3e4c49b5`.
@@ -66,6 +63,10 @@ is therefore best read as **PASS-A (substantive), NOT PASS-B**: the
 loop's search yields genuine non-baseline correctness, but is not yet
 producing candidates dense enough to break or tie the 18-instruction
 reference.
+
+## Verdict
+
+Current derived verdict: PASS-A.
 
 ## Run Evidence
 

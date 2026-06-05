@@ -143,19 +143,32 @@ def test_validate_report_accepts_current_report() -> None:
 
 
 def test_validate_report_rejects_stale_report(tmp_path: Path, monkeypatch) -> None:
+    """A trailing hand-edit appended after the ledger sections must be
+    rejected: post-live, the validator requires REPORT.md to *end*
+    with bin/write-report.py output verbatim. Hand-edits live above
+    `## Verdict`, not below `## PASS/FAIL Criteria`."""
     script = load_script("bin/validate-report.py")
     stale_report = tmp_path / "REPORT.md"
     stale_report.write_text(Path("REPORT.md").read_text() + "\nmanual stale edit\n")
     monkeypatch.setattr(script, "REPORT", stale_report)
 
     errors = script.validate()
-    assert any("must match" in error for error in errors)
+    assert any("must end with" in error or "auto body cannot drift" in error for error in errors)
 
 
 def test_validate_report_rejects_seed_air5_attribution(tmp_path: Path, monkeypatch) -> None:
+    """Pre-live (candidate_response_count == 0), the seed row must stay
+    attributed to reference-baseline/local-harness. After a real run
+    lands, live attribution on row 0 is legitimate (the model can
+    rediscover the baseline), so this assertion only applies pre-live —
+    we force candidate_response_count=0 in the fixture to keep the
+    test honest."""
     script = load_script("bin/validate-report.py")
     leaderboard = tmp_path / "leaderboard.json"
     payload = json.loads(Path("web/public/leaderboard.json").read_text())
+    payload["candidate_response_count"] = 0
+    if isinstance(payload.get("run_summary"), dict):
+        payload["run_summary"]["candidate_response_count"] = 0
     payload["rows"][0]["model_id"] = "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
     payload["rows"][0]["provider_id"] = "air5"
     leaderboard.write_text(json.dumps(payload))

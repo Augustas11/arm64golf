@@ -62,23 +62,93 @@ def validate() -> list[str]:
         return [f"REPORT.md render failed: {exc}"]
 
     actual = REPORT.read_text()
-    require(actual == rendered, "REPORT.md must match bin/write-report.py output for web/public/leaderboard.json", errors)
-    require("Status: pending" in actual, "REPORT.md must record pending status before live run", errors)
-    require(
-        "No PASS/FAIL verdict yet" in actual,
-        "REPORT.md must state there is no PASS/FAIL verdict before live run",
-        errors,
-    )
-    require(
-        "Pending Before PASS/FAIL Run" in actual,
-        "REPORT.md must include pending live-run gates",
-        errors,
-    )
-    require(
-        "MACPROVIDER_API_KEY" in actual and "air5 coder-model handoff" in actual,
-        "REPORT.md must name live credential and air5 handoff blockers",
-        errors,
-    )
+    pre_live = int(payload.get("candidate_response_count") or 0) == 0
+
+    if pre_live:
+        # Pre-live: REPORT.md must be the bare write-report.py output and
+        # carry the pending-state assertions. A bona fide live run flips
+        # the file into post-live mode (below).
+        require(
+            actual == rendered,
+            "REPORT.md must match bin/write-report.py output for web/public/leaderboard.json",
+            errors,
+        )
+        require("Status: pending" in actual, "REPORT.md must record pending status before live run", errors)
+        require(
+            "No PASS/FAIL verdict yet" in actual,
+            "REPORT.md must state there is no PASS/FAIL verdict before live run",
+            errors,
+        )
+        require(
+            "Pending Before PASS/FAIL Run" in actual,
+            "REPORT.md must include pending live-run gates",
+            errors,
+        )
+        require(
+            "MACPROVIDER_API_KEY" in actual and "air5 coder-model handoff" in actual,
+            "REPORT.md must name live credential and air5 handoff blockers",
+            errors,
+        )
+        rows = payload.get("rows")
+        if isinstance(rows, list) and rows:
+            row = rows[0]
+            require(isinstance(row, dict), "pending seed leaderboard row must be an object", errors)
+            if isinstance(row, dict):
+                require(
+                    row.get("model_id") == "reference-baseline" and row.get("provider_id") == "local-harness",
+                    "pending seed row must not claim live air5/coder-model attribution",
+                    errors,
+                )
+                require(
+                    "reference-baseline` / `local-harness" in actual,
+                    "REPORT.md must document seed baseline attribution separately from live model attribution",
+                    errors,
+                )
+    else:
+        # Post-live: the rendered output is split into a "head" (title +
+        # `Status:` line) and a "body" (everything from `## Run Evidence`
+        # onward — the ledger-derived sections). The head must open the
+        # report; the body must close it verbatim. Hand-edited narrative
+        # sections (network config, verdict interpretation, etc.) may
+        # sit between them. That way the auto-generated evidence cannot
+        # drift from the leaderboard ledger while leaving room for human
+        # interpretation above it. The auto-derived "## Verdict" block
+        # falls in the editable middle so a human can expand it
+        # (technical-vs-substantive PASS-A, etc.) without the validator
+        # treating that as drift.
+        body_marker = "## Verdict\n"
+        if body_marker in rendered:
+            head, body = rendered.split(body_marker, 1)
+            body = body_marker + body
+            require(
+                actual.startswith(head),
+                "REPORT.md must start with the title + status line produced by bin/write-report.py",
+                errors,
+            )
+            require(
+                actual.endswith(body),
+                "REPORT.md must end with the bin/write-report.py ledger sections "
+                f"(`{body_marker}` onward) verbatim — hand-edited sections may sit between the status "
+                "line and `## Run Evidence`, but the auto body cannot drift",
+                errors,
+            )
+        else:
+            # Defensive: write-report.py contract guarantees `## Run
+            # Evidence`. If a future refactor renames it, fall back to
+            # the strict endswith contract so drift is still caught.
+            require(
+                actual.endswith(rendered),
+                "REPORT.md must end with bin/write-report.py output for web/public/leaderboard.json",
+                errors,
+            )
+
+        require(
+            "Current derived verdict:" in actual,
+            "REPORT.md must record the auto-derived verdict line post-live",
+            errors,
+        )
+
+    # Cross-state invariants — apply pre- and post-live alike.
     require(
         "public launch is intentionally deferred" in actual and "explicit public launch approval" in actual,
         "REPORT.md must preserve private-test/public-launch deferral wording",
@@ -89,21 +159,6 @@ def validate() -> list[str]:
         "REPORT.md must include all PASS/FAIL criteria",
         errors,
     )
-    rows = payload.get("rows")
-    if isinstance(rows, list) and rows and payload.get("candidate_response_count") == 0:
-        row = rows[0]
-        require(isinstance(row, dict), "pending seed leaderboard row must be an object", errors)
-        if isinstance(row, dict):
-            require(
-                row.get("model_id") == "reference-baseline" and row.get("provider_id") == "local-harness",
-                "pending seed row must not claim live air5/coder-model attribution",
-                errors,
-            )
-            require(
-                "reference-baseline` / `local-harness" in actual,
-                "REPORT.md must document seed baseline attribution separately from live model attribution",
-                errors,
-            )
     return errors
 
 
