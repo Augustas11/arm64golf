@@ -166,6 +166,7 @@ def run(args: argparse.Namespace) -> int:
                     temperature=args.temperature,
                     top_p=args.top_p,
                     inter_call_sleep_s=args.inter_call_sleep_s,
+                    max_tokens=args.max_tokens,
                 ),
                 demo_token=demo_token,
             )
@@ -277,6 +278,12 @@ def main() -> int:
     parser.add_argument("--n", type=int, default=8)
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--top-p", type=float, default=0.95)
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=256,
+        help="per-call max_tokens cap. Bounds wall-clock per call so the gateway/coordinator timeout becomes a fallback, not a load-bearing knob.",
+    )
     parser.add_argument("--template", default="no_failed_context")
     parser.add_argument("--timeout-ms", type=int, default=100)
     parser.add_argument("--memory-limit-mb", type=int, default=256)

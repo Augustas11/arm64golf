@@ -9,7 +9,8 @@ import pytest
 from harness.attest import sign_receipt, verify_receipt
 from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID
 from harness.loop import main as loop_main
-from harness.inference import InferenceError, parse_chat_response
+from harness.inference import InferenceConfig, InferenceError, MacProviderClient, parse_chat_response
+from harness import inference as inference_module
 from harness.module import load_problem_module
 from harness.store import Store
 
@@ -176,6 +177,46 @@ def test_validate_air5_handoff_requires_no_touch_operator_boundary(tmp_path: Pat
 
     errors = script.validate(operator_notes=operator_notes)
     assert any("specific action to Augustas" in error for error in errors)
+
+
+def _capture_request_body(monkeypatch, client: MacProviderClient) -> dict:
+    captured: list[dict] = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return b'{"choices":[{"message":{"content":"ret\\n"}}]}'
+
+    def fake_urlopen(req, timeout):
+        captured.append(json.loads(req.data.decode("utf-8")))
+        return FakeResponse()
+
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(inference_module.time, "sleep", lambda s: None)
+    client.complete([{"role": "user", "content": "candidate?"}])
+    assert captured
+    return captured[0]
+
+
+def test_inference_config_caps_max_tokens_at_256(monkeypatch) -> None:
+    """v0.3 pins per-call output at 256 tokens so the gateway/coordinator
+    60s timeout becomes a fallback rather than a load-bearing knob."""
+    assert InferenceConfig().max_tokens == 256
+    client = MacProviderClient("test-key", InferenceConfig(n=1))
+    body = _capture_request_body(monkeypatch, client)
+    assert body["max_tokens"] == 256
+
+
+def test_inference_config_max_tokens_is_overridable(monkeypatch) -> None:
+    """The cap must be overridable so probes / ablations can scale it."""
+    client = MacProviderClient("test-key", InferenceConfig(n=1, max_tokens=128))
+    body = _capture_request_body(monkeypatch, client)
+    assert body["max_tokens"] == 128
 
 
 def test_parse_chat_response_returns_all_choices() -> None:

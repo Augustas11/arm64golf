@@ -22,6 +22,13 @@ class InferenceConfig:
     n: int = 8
     timeout_s: float = 60.0
     max_retries: int = 3
+    # Sort3-arm64 reference is 18 instructions; verified candidates have been
+    # ≤18. 256 tokens is ~4× upper bound, leaving headroom for the model's
+    # preamble/postamble noise without enabling rambling 1000+ token
+    # completions that previously blew through the 10s gateway header
+    # timeout (since bumped to 60s, but the cap turns the timeout into a
+    # fallback rather than a load-bearing knob).
+    max_tokens: int = 256
     # Sleep this many seconds between successive single-completion calls
     # inside one fanned-out batch. Prevents per-minute burst throttles from
     # firing on a tight loop. Zero disables.
@@ -126,6 +133,7 @@ class MacProviderClient:
             "temperature": self.config.temperature,
             "top_p": self.config.top_p,
             "n": 1,
+            "max_tokens": self.config.max_tokens,
         }
         body = json.dumps(payload).encode("utf-8")
         headers = {

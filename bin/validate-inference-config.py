@@ -16,6 +16,7 @@ EXPECTED_PROVIDER = "air5"
 EXPECTED_TEMPERATURE = 0.7
 EXPECTED_TOP_P = 0.95
 EXPECTED_N = 8
+EXPECTED_MAX_TOKENS = 256
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -58,6 +59,11 @@ def validate_defaults(errors: list[str]) -> None:
     require(config.temperature == EXPECTED_TEMPERATURE, "InferenceConfig.temperature must default to 0.7", errors)
     require(config.top_p == EXPECTED_TOP_P, "InferenceConfig.top_p must default to 0.95", errors)
     require(config.n == EXPECTED_N, "InferenceConfig.n must default to 8", errors)
+    require(
+        config.max_tokens == EXPECTED_MAX_TOKENS,
+        "InferenceConfig.max_tokens must default to 256 (per-call latency cap)",
+        errors,
+    )
 
 
 def validate_request_shape(errors: list[str]) -> None:
@@ -124,6 +130,11 @@ def validate_request_shape(errors: list[str]) -> None:
         require(
             body.get("n") == 1,
             "request body n must be 1 (gateway rejects n>1; client fans out client-side)",
+            errors,
+        )
+        require(
+            body.get("max_tokens") == EXPECTED_MAX_TOKENS,
+            f"request body max_tokens must be {EXPECTED_MAX_TOKENS} (per-call latency cap)",
             errors,
         )
         require(body.get("messages") == [{"role": "user", "content": "candidate?"}], "request body messages must pass through", errors)
