@@ -32,7 +32,25 @@ def sandbox_verify(problem_dir: Path, module, candidate, timeout_ms: int) -> boo
     return bool(result.get("verified"))
 
 
-def seed_baseline(store: Store, problem_dir: Path, module, model_id: str, provider_id: str, timeout_ms: int) -> None:
+def receipt_payload(candidate, score: int, model_id: str, provider_id: str) -> dict[str, object]:
+    return {
+        "problem_id": candidate.problem_id,
+        "candidate_hash": candidate.candidate_hash,
+        "score": score,
+        "model_id": model_id,
+        "provider_id": provider_id,
+        "harness_version": HARNESS_VERSION,
+        "ts": utc_now(),
+    }
+
+
+def sign_and_record_receipt(store: Store, args: argparse.Namespace, candidate, score: int, model_id: str, provider_id: str) -> None:
+    payload = receipt_payload(candidate, score, model_id, provider_id)
+    receipt = sign_receipt(payload, Path(args.private_key), Path(args.public_key), Path(args.receipts_dir))
+    store.record_receipt(candidate.candidate_hash, receipt.path, receipt.signature)
+
+
+def seed_baseline(store: Store, args: argparse.Namespace, problem_dir: Path, module, model_id: str, provider_id: str, timeout_ms: int) -> None:
     count, source = module.baseline()
     candidate = module.load(source)
     verified = sandbox_verify(problem_dir, module, candidate, timeout_ms)
@@ -45,6 +63,8 @@ def seed_baseline(store: Store, problem_dir: Path, module, model_id: str, provid
         model_id=model_id,
         provider_id=provider_id,
     )
+    if verified:
+        sign_and_record_receipt(store, args, candidate, count, model_id, provider_id)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -54,7 +74,7 @@ def run(args: argparse.Namespace) -> int:
     model_id = args.model
     provider_id = args.provider
 
-    seed_baseline(store, problem_dir, module, model_id, provider_id, args.timeout_ms)
+    seed_baseline(store, args, problem_dir, module, model_id, provider_id, args.timeout_ms)
 
     if args.seed_only:
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
@@ -94,17 +114,7 @@ def run(args: argparse.Namespace) -> int:
                 provider_id=provider_id,
             )
             if verified:
-                payload = {
-                    "problem_id": candidate.problem_id,
-                    "candidate_hash": candidate.candidate_hash,
-                    "score": module.score(candidate),
-                    "model_id": model_id,
-                    "provider_id": provider_id,
-                    "harness_version": HARNESS_VERSION,
-                    "ts": utc_now(),
-                }
-                receipt = sign_receipt(payload, Path(args.private_key), Path(args.public_key), Path(args.receipts_dir))
-                store.record_receipt(candidate.candidate_hash, receipt.path, receipt.signature)
+                sign_and_record_receipt(store, args, candidate, module.score(candidate), model_id, provider_id)
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
     return 0
 

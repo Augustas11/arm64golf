@@ -83,6 +83,10 @@ class Store:
         )
         self.db.commit()
 
+    def attempt_count(self, problem_id: str) -> int:
+        cur = self.db.execute("SELECT COUNT(*) FROM attempts WHERE problem_id = ?", (problem_id,))
+        return int(cur.fetchone()[0])
+
     def best_candidate(self, problem_id: str) -> sqlite3.Row | None:
         cur = self.db.execute(
             """
@@ -125,5 +129,11 @@ class Store:
 
     def export_leaderboard(self, problem_id: str, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"problem_id": problem_id, "rows": self.leaderboard(problem_id)}
+        rows = self.leaderboard(problem_id)
+        payload = {
+            "problem_id": problem_id,
+            "attempt_count": self.attempt_count(problem_id),
+            "last_update": rows[0]["discovered_at"] if rows else "",
+            "rows": rows,
+        }
         path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
