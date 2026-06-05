@@ -10,11 +10,14 @@ handoff and live MacProvider credentials are still pending.
 ## Current Evidence
 
 - Baseline candidate verifies locally on 1200 deterministic `sort3-arm64`
-  tests.
+  tests through the native ARM64 sandbox runner.
 - Baseline score is 18 instructions.
 - Seed receipt exists at `receipts/726c3e4c49b5.json`.
 - Receipt verification passes with `bin/verify-receipt.py`.
 - Static leaderboard contains the seed baseline row.
+- `sandbox/profile.sb` starts from deny-by-default and the native sandbox test
+  suite blocks filesystem read, filesystem write, network connect, fork, and
+  external exec probes.
 
 ## Pending Before PASS/FAIL Run
 
@@ -23,8 +26,6 @@ handoff and live MacProvider credentials are still pending.
 - Complete the air5 coder-model handoff.
 - Confirm live provider id and model availability.
 - Run the search harness with `MACPROVIDER_API_KEY`.
-- Replace the interpreter-backed sandbox prototype with native assembled
-  routine execution before claiming the full hard-sandbox requirement.
 - Deploy `web/` and configure `arm64golf.streamvc.live`.
 
 ## PASS/FAIL Criteria

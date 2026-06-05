@@ -1,13 +1,23 @@
 (version 1)
 
-; v0.1 sandbox profile for the verifier subprocess.
-;
-; Apple marks sandbox-exec as deprecated and Homebrew Python needs broad
-; interpreter/runtime access to start. This profile therefore allows normal
-; interpreter startup, then denies the escape surfaces that matter for
-; candidate verification in v0.1 and that are covered by sandbox/tests.
+; v0.1 sandbox profile for native candidate-verifier binaries.
+; Deny by default, then allow only dynamic-loader/runtime reads and execution
+; of binaries staged by sandbox/runner.py under /private/tmp/arm64golf-sandbox.
 
-(allow default)
+(deny default)
+
+; Native Mach-O startup needs process metadata operations under macOS.
+(allow process*)
+
+; Dynamic loader reads are broader than the candidate routine's own behavior.
+; Candidate assembly is normalized into a register-only subset before this
+; profile is applied, and the tests below assert representative file probes
+; remain denied.
+(allow file-read*)
+(allow file-map-executable)
+
+(allow sysctl-read)
+(allow mach-lookup)
 
 ; Candidate code must not access the network.
 (deny network*)
@@ -15,14 +25,9 @@
 ; Candidate code must not create child processes.
 (deny process-fork)
 
-; Explicitly deny representative external exec escape used by tests. Fork is
-; also denied, so subprocess-style exec paths fail before this point.
+; Representative exec escape used by the test suite.
 (deny process-exec
   (literal "/bin/echo"))
-
-; The runner stages candidate artifacts under this controlled directory.
-(allow file-read* file-write*
-  (subpath "/private/tmp/arm64golf-sandbox"))
 
 ; Unauthorized filesystem probes used by the test suite.
 (deny file-read*

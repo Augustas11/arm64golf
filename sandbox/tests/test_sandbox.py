@@ -3,23 +3,40 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROFILE = REPO_ROOT / "sandbox" / "profile.sb"
+TMP_ROOT = Path("/private/tmp/arm64golf-sandbox")
 
 
 def sandbox_available() -> bool:
-    return shutil.which("sandbox-exec") is not None and sys.platform == "darwin"
+    return shutil.which("sandbox-exec") is not None and shutil.which("clang") is not None and sys.platform == "darwin"
 
 
-@unittest.skipUnless(sandbox_available(), "sandbox-exec is unavailable on this host")
-class SandboxProfileTests(unittest.TestCase):
-    def run_sandboxed_python(self, code: str) -> subprocess.CompletedProcess[str]:
+def run_sandboxed_c(source: str) -> subprocess.CompletedProcess[str]:
+    TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="probe-", dir=TMP_ROOT) as tmp:
+        tmpdir = Path(tmp)
+        c_path = tmpdir / "probe.c"
+        exe_path = tmpdir / "probe"
+        c_path.write_text(source)
+        compile_proc = subprocess.run(
+            ["clang", str(c_path), "-o", str(exe_path)],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+        if compile_proc.returncode != 0:
+            raise AssertionError(compile_proc.stderr)
         return subprocess.run(
-            ["sandbox-exec", "-f", str(PROFILE), sys.executable, "-c", code],
+            ["sandbox-exec", "-f", str(PROFILE), str(exe_path)],
             cwd=REPO_ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -28,26 +45,66 @@ class SandboxProfileTests(unittest.TestCase):
             check=False,
         )
 
+
+@unittest.skipUnless(sandbox_available(), "sandbox-exec is unavailable on this host")
+class SandboxProfileTests(unittest.TestCase):
     def test_blocks_filesystem_read_outside_allowlist(self) -> None:
-        proc = self.run_sandboxed_python("open('/etc/passwd').read()")
-        self.assertNotEqual(proc.returncode, 0)
-
-    def test_blocks_filesystem_write_outside_allowlist(self) -> None:
-        proc = self.run_sandboxed_python("open('/tmp/arm64golf-forbidden', 'w').write('x')")
-        self.assertNotEqual(proc.returncode, 0)
-
-    def test_blocks_network(self) -> None:
-        proc = self.run_sandboxed_python(
-            "import socket; socket.create_connection(('127.0.0.1', 9), timeout=0.1)"
+        proc = run_sandboxed_c(
+            """
+            #include <fcntl.h>
+            int main(void) { return open("/etc/passwd", O_RDONLY) >= 0 ? 0 : 1; }
+            """
         )
         self.assertNotEqual(proc.returncode, 0)
 
+    def test_blocks_filesystem_write_outside_allowlist(self) -> None:
+        proc = run_sandboxed_c(
+            """
+            #include <fcntl.h>
+            #include <unistd.h>
+            int main(void) { int fd = open("/tmp/arm64golf-forbidden", O_CREAT | O_WRONLY, 0600); return fd >= 0 ? 0 : 1; }
+            """
+        )
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_blocks_network(self) -> None:
+        proc = run_sandboxed_c(
+            """
+            #include <errno.h>
+            #include <netinet/in.h>
+            #include <string.h>
+            #include <sys/socket.h>
+            int main(void) {
+                int fd = socket(AF_INET, SOCK_STREAM, 0);
+                if (fd < 0) return errno == EPERM ? 0 : 2;
+                struct sockaddr_in addr;
+                memset(&addr, 0, sizeof(addr));
+                addr.sin_family = AF_INET;
+                addr.sin_port = 9;
+                addr.sin_addr.s_addr = 0x0100007f;
+                if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) return 3;
+                return errno == EPERM ? 0 : 4;
+            }
+            """
+        )
+        self.assertEqual(proc.returncode, 0)
+
     def test_blocks_fork(self) -> None:
-        proc = self.run_sandboxed_python("import os; os.fork()")
+        proc = run_sandboxed_c(
+            """
+            #include <unistd.h>
+            int main(void) { return fork() >= 0 ? 0 : 1; }
+            """
+        )
         self.assertNotEqual(proc.returncode, 0)
 
     def test_blocks_exec(self) -> None:
-        proc = self.run_sandboxed_python("import os; os.execv('/bin/echo', ['/bin/echo', 'x'])")
+        proc = run_sandboxed_c(
+            """
+            #include <unistd.h>
+            int main(void) { char *argv[] = {"/bin/echo", "x", 0}; execv("/bin/echo", argv); return 1; }
+            """
+        )
         self.assertNotEqual(proc.returncode, 0)
 
 
@@ -65,3 +122,19 @@ class SandboxRunnerTests(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn('"verified": true', proc.stdout)
+
+    def test_wrong_candidate_fails_native_runner(self) -> None:
+        with tempfile.NamedTemporaryFile("w", suffix=".s") as fh:
+            fh.write("mov x0, x2\nmov x1, x1\nmov x2, x0\n")
+            fh.flush()
+            proc = subprocess.run(
+                [sys.executable, "sandbox/runner.py", "--candidate", fh.name],
+                cwd=REPO_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+                check=False,
+            )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('"verified": false', proc.stdout)

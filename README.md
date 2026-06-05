@@ -29,7 +29,7 @@ search harness -> sandboxed sort3 verifier -> SQLite store
 static leaderboard JSON -> public web page
 ```
 
-The harness pins inference to `https://api.streamvc.live/v1/chat/completions` with `X-MacProvider-Provider: air5`. Candidates run locally under a deny-by-default macOS sandbox; `air5` only serves inference. Verified candidates receive ed25519 receipts binding problem, candidate hash, score, model, provider, harness version, and timestamp.
+The harness pins inference to `https://api.streamvc.live/v1/chat/completions` with `X-MacProvider-Provider: air5`. Candidates are assembled into native ARM64 verifier binaries and run locally under a deny-by-default macOS `sandbox-exec` profile; `air5` only serves inference. Verified candidates receive ed25519 receipts binding problem, candidate hash, score, model, provider, harness version, and timestamp.
 
 ## Status
 

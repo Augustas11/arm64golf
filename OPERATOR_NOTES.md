@@ -34,6 +34,7 @@ Suggested Vercel settings:
 - framework preset: Other
 - build command: empty
 - output directory: `.`
+- config file: `web/vercel.json`
 
 Suggested public hostname:
 
@@ -57,5 +58,7 @@ Before starting a real search:
 Example:
 
 ```bash
+.venv/bin/pytest sandbox/tests -q
+.venv/bin/python sandbox/runner.py
 .venv/bin/python harness/loop.py --rounds 1
 ```

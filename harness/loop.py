@@ -15,6 +15,7 @@ from harness.inference import DEFAULT_MODEL, DEFAULT_PROVIDER, InferenceConfig, 
 from harness.module import load_problem_module
 from harness.prompts import build_prompt, extract_assembly
 from harness.store import Store
+from sandbox.runner import run_candidate as run_sandboxed_candidate
 
 
 HARNESS_VERSION = "0.1.0"
@@ -24,10 +25,17 @@ def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def seed_baseline(store: Store, module, model_id: str, provider_id: str) -> None:
+def sandbox_verify(problem_dir: Path, module, candidate, timeout_ms: int) -> bool:
+    result = run_sandboxed_candidate(problem_dir, candidate.normalized_source, timeout_ms=timeout_ms)
+    if not result.get("ok"):
+        raise RuntimeError(str(result.get("error", "sandbox runner failed")))
+    return bool(result.get("verified"))
+
+
+def seed_baseline(store: Store, problem_dir: Path, module, model_id: str, provider_id: str, timeout_ms: int) -> None:
     count, source = module.baseline()
     candidate = module.load(source)
-    verified = module.verify(candidate)
+    verified = sandbox_verify(problem_dir, module, candidate, timeout_ms)
     store.record_candidate(
         candidate_hash=candidate.candidate_hash,
         problem_id=candidate.problem_id,
@@ -46,7 +54,7 @@ def run(args: argparse.Namespace) -> int:
     model_id = args.model
     provider_id = args.provider
 
-    seed_baseline(store, module, model_id, provider_id)
+    seed_baseline(store, problem_dir, module, model_id, provider_id, args.timeout_ms)
 
     if args.seed_only:
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
@@ -75,7 +83,7 @@ def run(args: argparse.Namespace) -> int:
         store.record_attempt(module.PROBLEM_ID, args.template, "ok")
         for response in responses:
             candidate = module.load(extract_assembly(response))
-            verified = module.verify(candidate)
+            verified = sandbox_verify(problem_dir, module, candidate, args.timeout_ms)
             store.record_candidate(
                 candidate_hash=candidate.candidate_hash,
                 problem_id=candidate.problem_id,
@@ -117,6 +125,7 @@ def main() -> int:
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--template", default="no_failed_context")
+    parser.add_argument("--timeout-ms", type=int, default=100)
     parser.add_argument("--seed-only", action="store_true")
     return run(parser.parse_args())
 
