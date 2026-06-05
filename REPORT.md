@@ -1,11 +1,12 @@
 # arm64golf v0.1 Report
 
-Status: pass-a
+Status: pass-c
 
 ## Network configuration this canary depended on
 
-The v0.3 canary ran against production MacProvider at api.streamvc.live,
-with the following non-default config in effect:
+The v0.3 canary and the v0.3 post-canary csel_hint probe both ran
+against production MacProvider at api.streamvc.live, with the
+following non-default config in effect:
 
 - `gateway.timeouts.coordinator_header_timeout_seconds: 60` (default: 10;
   bumped 2026-06-05 because a 10s ceiling truncated any non-streaming
@@ -23,78 +24,80 @@ streaming, or restrict the workload to fit the defaults.
 The v0.3 harness adds its own bound on the buyer side
 (`InferenceConfig.max_tokens=256`, threaded through to the chat
 completions payload) so the 60s timeouts behave as a fallback rather
-than a load-bearing knob. The bound was implicit during the v0.3
-canary (default).
+than a load-bearing knob.
 
 ## Verdict Interpretation
 
 The harness's auto-derived verdict (recorded verbatim in the
-`## Verdict` section below) is PASS-A whenever any verified candidate
-exists. Two readings need to be kept distinct:
+`## Verdict` section below) is PASS-C because the best verified
+candidate is 12 instructions, below the 16-instruction PASS-C
+threshold. Three readings need to be kept distinct:
 
-- **PASS-A (technical)** — at least one verified candidate, regardless
-  of whether its normalized hash matches the baseline `726c3e4c49b5`.
-  v0.1, v0.2, and v0.3 all hit this. It says the harness, sandbox,
-  inference path, and receipt pipeline work end-to-end.
 - **PASS-A (substantive)** — at least one verified candidate with a
-  normalized hash that is NOT `726c3e4c49b5`. Even a rediscovery of
-  the same logical 18-instruction routine with different register
-  allocation would count. v0.3 DOES hit this: the leaderboard ends
-  with four rows — the baseline `726c3e4c49b5` (score 18, rank 1) and
-  three distinct verified non-baseline candidates `47f0dd8d0a24`,
-  `f41b055a1965`, and `17e628abfc2b`, each scoring 24 instructions.
-  These are correct sort3 routines (all 1200 deterministic test
-  cases pass through the sandboxed runner) that happen to be longer
-  than the reference — i.e. the model found genuinely new logic, just
-  not denser logic. They are signed and verifiable via
-  `bin/verify-receipt.py receipts/<hash>.json`.
+  normalized hash that is NOT the baseline `726c3e4c49b5`. The v0.3
+  canary cleared this with three verified non-baseline 24-instruction
+  routines (`47f0dd8d0a24`, `f41b055a1965`, `17e628abfc2b`).
 
-v0.3 reading: the network supported the workload (30 attempts, 105
-responses, zero `provider_unreachable` / `quota_exhausted` /
-`auth_failed` / `burst_throttled` terminal halts; the run completed
-without operator intervention), and the search discovered three
-distinct non-baseline verified routines at score 24 — but no verified
-candidate at the baseline's score 18 or below (`first_17_response:
-none`). Dominant failure modes are unchanged from v0.1 / v0.2: `case
-2 failed` (already-ascending input), `case 1 failed` (all-equal
-triple), and ISA mnemonic errors (`eors`, `eorr`, `teqz`, `or`) even
-though the `failed_context` template explicitly surfaces them. v0.3
-is therefore best read as **PASS-A (substantive), NOT PASS-B**: the
-loop's search yields genuine non-baseline correctness, but is not yet
-producing candidates dense enough to break or tie the 18-instruction
-reference.
+- **PASS-B (≤17 instructions verified)** — cleared by the v0.3
+  post-canary probe with the `csel_hint` template:
+  `57b2aa236342`, 12 instructions, signed receipt under
+  `receipts/57b2aa236342.json`. The routine is three cmp + csel +
+  csel + mov blocks (one per adjacent-pair comparator in a
+  sort-three network).
+
+- **PASS-C (≤16 instructions verified)** — same candidate clears
+  this threshold (12 ≤ 16).
+
+**Honest caveat on the PASS-B/PASS-C win.** The 12-instruction
+routine is the literal 4-instruction csel pattern from the
+`csel_hint` prompt's worked example, tiled three times — the model
+pattern-matched the example rather than discovering the structure
+from scratch. The receipt is real (the routine passes all 1200
+deterministic test cases through the sandboxed runner) and the
+leaderboard claim is honest, but the credit for the compression
+goes to the prompt engineer, not to model search. A more
+substantive next probe is `dual_example` or `pass_b_target` (which
+do not hand over the csel pattern) — if either finds a ≤17 routine
+the model is actually doing search; if neither does, the model is
+fitting the example, and ≤11 needs different prompt surgery.
+
+Failure modes are unchanged from v0.1 / v0.2 / v0.3 canary: `case 2
+failed` (already-ascending input, 18x), `case 1 failed` (all-equal
+triple, 15x), and ISA mnemonic errors (`eors`, `eorr`, `teqz`,
+`or`). The `failed_context` block continues to surface these
+inline; the model continues to occasionally emit them anyway.
 
 ## Verdict
 
-Current derived verdict: PASS-A.
+Current derived verdict: PASS-C.
 
 ## Run Evidence
 
 - problem: `sort3-arm64`
-- attempts: 30
-- requested candidates: 240
-- candidate responses: 105
-- evaluated responses: 105
-- verified evaluations: 54
-- failed evaluations: 51
-- evaluations with error text: 51
-- best verified score: 18
+- attempts: 32
+- requested candidates: 256
+- candidate responses: 115
+- evaluated responses: 115
+- verified evaluations: 55
+- failed evaluations: 60
+- evaluations with error text: 60
+- best verified score: 12
 - first verified response: 2
-- first 17-instruction response: none
-- first 16-instruction response: none
+- first 17-instruction response: 115
+- first 16-instruction response: 115
 - near-best verified candidates: 1
 - near-best unique opcode structures: 1
 
 ## Structural Diversity Evidence
 
-- `08c76e7641c069f2`: 1 candidate(s), representative `726c3e4c49b5`, score 18, 18 instructions: `cmp csetm eor and eor eor cmp csetm eor and eor eor cmp csetm eor and eor eor`
+- `f13bac4e5383f523`: 1 candidate(s), representative `57b2aa236342`, score 12, 12 instructions: `cmp csel csel mov cmp csel csel mov cmp csel csel mov`
 
 This evidence is for manual PASS-C review only; automatic PASS-C still requires a verified 16-instruction candidate.
 
 ## Top Evaluation Errors
 
-- 17x case 2 failed
-- 7x case 1 failed
+- 18x case 2 failed
+- 15x case 1 failed
 - 1x /private/tmp/arm64golf-sandbox/run-2478qtx3/candidate.s:7:5: error: unrecognized instruction mnemonic
     teqz x3, x3
     ^

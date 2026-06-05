@@ -1,19 +1,30 @@
 {
-  "attempt_count": 30,
-  "candidate_response_count": 105,
-  "last_update": "2026-06-05T10:52:23Z",
+  "attempt_count": 32,
+  "candidate_response_count": 115,
+  "last_update": "2026-06-05T22:04:45Z",
   "problem_id": "sort3-arm64",
-  "requested_candidate_count": 240,
+  "requested_candidate_count": 256,
   "rows": [
+    {
+      "candidate_hash": "57b2aa2363428e955d361e45d4204a9c6bf9cf205fe32ec94d4ed4813ac5a2ff",
+      "candidate_hash_short": "57b2aa236342",
+      "discovered_at": "2026-06-05T22:04:45Z",
+      "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+      "provider_id": "air5",
+      "rank": 1,
+      "receipt_signature": "F9/lQOc099KDaY518ztvMXRE4Y7xEy4z7Pih70HNwkZltK1qJWmFzLpuY5+8a+bJyxSRRjV8yhqFxa+VRk11Aw==",
+      "receipt_signature_short": "F9/lQOc099KDaY51",
+      "score": 12
+    },
     {
       "candidate_hash": "726c3e4c49b564d0d9ed5613da861ba72c6107951a48939bb932a1d338076040",
       "candidate_hash_short": "726c3e4c49b5",
       "discovered_at": "2026-06-05T10:52:23Z",
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
-      "rank": 1,
-      "receipt_signature": "QR0U5Fd7Y7ZVR//t/0E6EQgLF199vQGbd4s/2dtMBYKZnyQHukoUGFhzEncYyjigXn1fDRoUcQI5z/kR/WCkDg==",
-      "receipt_signature_short": "QR0U5Fd7Y7ZVR//t",
+      "rank": 2,
+      "receipt_signature": "P1rd9+SuL3c+ucbF5SQ6cdv714jXNxPbKJ1/g59fJYvyaqAjLbC4gGyzlRDy+8UQY5E+XO6i4ORBSXMr9rutAg==",
+      "receipt_signature_short": "P1rd9+SuL3c+ucbF",
       "score": 18
     },
     {
@@ -22,7 +33,7 @@
       "discovered_at": "2026-06-05T10:52:24Z",
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
-      "rank": 2,
+      "rank": 3,
       "receipt_signature": "c+TR1jKm8BPSBzVe85umxdVh9t6ykqQ9vkF2GxPerC0QgAZI8a1fi+zw7LtrbzTPqJpVlQdivuHuqVDL6tp2Dg==",
       "receipt_signature_short": "c+TR1jKm8BPSBzVe",
       "score": 24
@@ -33,7 +44,7 @@
       "discovered_at": "2026-06-05T11:13:40Z",
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
-      "rank": 3,
+      "rank": 4,
       "receipt_signature": "Dk2CDniq/vbr7TikgYZybuvWCAHy3y592ywaGTXdbCOcRlyShkUSNej3qWXOBZYs6UG2fulEfOSxw7WQBN4SCg==",
       "receipt_signature_short": "Dk2CDniq/vbr7Tik",
       "score": 24
@@ -44,61 +55,55 @@
       "discovered_at": "2026-06-05T11:35:50Z",
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
-      "rank": 4,
+      "rank": 5,
       "receipt_signature": "KZ4yZ0dwCFKe6+tzENLaVeRZ9V4ab9Ve2Yd67O4h9mhu/96PgDdwjKqZf7FShQHwcT5/65RtGjdNOmIwHq3BBA==",
       "receipt_signature_short": "KZ4yZ0dwCFKe6+tz",
       "score": 24
     }
   ],
   "run_summary": {
-    "attempt_count": 30,
-    "best_verified_score": 18,
-    "candidate_response_count": 105,
-    "evaluation_count": 105,
-    "evaluation_error_count": 51,
-    "failed_evaluation_count": 51,
-    "first_16_response": null,
-    "first_17_response": null,
+    "attempt_count": 32,
+    "best_verified_score": 12,
+    "candidate_response_count": 115,
+    "evaluation_count": 115,
+    "evaluation_error_count": 60,
+    "failed_evaluation_count": 60,
+    "first_16_response": 115,
+    "first_17_response": 115,
     "first_verified_response": 2,
     "near_best_candidate_count": 1,
     "near_best_structures": [
       {
         "candidate_count": 1,
-        "fingerprint": "08c76e7641c069f2",
-        "instruction_count": 18,
+        "fingerprint": "f13bac4e5383f523",
+        "instruction_count": 12,
         "opcode_sequence": [
           "cmp",
-          "csetm",
-          "eor",
-          "and",
-          "eor",
-          "eor",
+          "csel",
+          "csel",
+          "mov",
           "cmp",
-          "csetm",
-          "eor",
-          "and",
-          "eor",
-          "eor",
+          "csel",
+          "csel",
+          "mov",
           "cmp",
-          "csetm",
-          "eor",
-          "and",
-          "eor",
-          "eor"
+          "csel",
+          "csel",
+          "mov"
         ],
-        "representative_hash_short": "726c3e4c49b5",
-        "representative_score": 18
+        "representative_hash_short": "57b2aa236342",
+        "representative_score": 12
       }
     ],
     "near_best_unique_structure_count": 1,
-    "requested_candidate_count": 240,
+    "requested_candidate_count": 256,
     "top_evaluation_errors": [
       {
-        "count": 17,
+        "count": 18,
         "error": "case 2 failed"
       },
       {
-        "count": 7,
+        "count": 15,
         "error": "case 1 failed"
       },
       {
@@ -114,6 +119,6 @@
         "error": "/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:7:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x4, x0, x1\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:9:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x0, x0, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:10:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x1, x1, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:13:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x4, x1, x2\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:15:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x1, x1, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:16:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x2, x2, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:19:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x4, x0, x1\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:21:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x0, x0, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:22:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x1, x1, x4\n    ^"
       }
     ],
-    "verified_evaluation_count": 54
+    "verified_evaluation_count": 55
   }
 }
