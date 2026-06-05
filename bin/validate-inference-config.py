@@ -61,28 +61,51 @@ def validate_defaults(errors: list[str]) -> None:
 
 
 def validate_request_shape(errors: list[str]) -> None:
-    captured: dict[str, Any] = {}
+    # The gateway rejects n>1 with HTTP 400 {"code":"n_must_be_1"}, so the
+    # client fans config.n out into config.n separate single-completion calls.
+    # Each call sends n=1 in the body; the diversity comes from per-call
+    # temperature/top_p sampling. The validator asserts the new contract.
+    captured: list[dict[str, Any]] = []
     original_urlopen = inference.urllib.request.urlopen
+    original_sleep = inference.time.sleep
 
     def fake_urlopen(req, timeout: float):
-        captured["url"] = req.full_url
-        captured["method"] = req.get_method()
-        captured["headers"] = dict(req.header_items())
-        captured["body"] = json.loads(req.data.decode("utf-8"))
-        captured["timeout"] = timeout
+        captured.append(
+            {
+                "url": req.full_url,
+                "method": req.get_method(),
+                "headers": dict(req.header_items()),
+                "body": json.loads(req.data.decode("utf-8")),
+                "timeout": timeout,
+            }
+        )
         return FakeResponse()
 
     inference.urllib.request.urlopen = fake_urlopen
+    inference.time.sleep = lambda seconds: None
     try:
         client = inference.MacProviderClient("test-key")
         responses = client.complete([{"role": "user", "content": "candidate?"}])
     finally:
         inference.urllib.request.urlopen = original_urlopen
+        inference.time.sleep = original_sleep
 
-    require(responses == ["cmp x0, x1\n"], "client must return parsed chat response content", errors)
-    require(captured.get("url") == EXPECTED_ENDPOINT, "client must POST to the pinned MacProvider endpoint", errors)
-    require(captured.get("method") == "POST", "client must use POST", errors)
-    headers = captured.get("headers", {})
+    require(
+        responses == ["cmp x0, x1\n"] * EXPECTED_N,
+        f"client must fan config.n={EXPECTED_N} calls and concatenate their parsed contents",
+        errors,
+    )
+    require(
+        len(captured) == EXPECTED_N,
+        f"client must issue exactly config.n={EXPECTED_N} HTTP requests",
+        errors,
+    )
+    if not captured:
+        return
+    first = captured[0]
+    require(first.get("url") == EXPECTED_ENDPOINT, "client must POST to the pinned MacProvider endpoint", errors)
+    require(first.get("method") == "POST", "client must use POST", errors)
+    headers = first.get("headers", {})
     require(isinstance(headers, dict), "captured headers must be a dict", errors)
     if isinstance(headers, dict):
         require(header_value(headers, "Content-Type") == "application/json", "client must send JSON content type", errors)
@@ -92,17 +115,25 @@ def validate_request_shape(errors: list[str]) -> None:
             "client must pin X-MacProvider-Provider to air5",
             errors,
         )
-    body = captured.get("body")
+    body = first.get("body")
     require(isinstance(body, dict), "captured request body must be a JSON object", errors)
     if isinstance(body, dict):
         require(body.get("model") == EXPECTED_MODEL, "request body model must be the pinned coder model", errors)
         require(body.get("temperature") == EXPECTED_TEMPERATURE, "request body temperature must be 0.7", errors)
         require(body.get("top_p") == EXPECTED_TOP_P, "request body top_p must be 0.95", errors)
-        require(body.get("n") == EXPECTED_N, "request body n must be 8", errors)
+        require(
+            body.get("n") == 1,
+            "request body n must be 1 (gateway rejects n>1; client fans out client-side)",
+            errors,
+        )
         require(body.get("messages") == [{"role": "user", "content": "candidate?"}], "request body messages must pass through", errors)
 
 
 def validate_no_auth_retry(errors: list[str]) -> None:
+    # 401/403 must surface as AuthError immediately, with no retry. The fan
+    # out must also bail the whole batch on AuthError — burning N requests
+    # against a known-bad key is pointless. So attempts must equal 1 even
+    # though config.n=8 by default.
     original_urlopen = inference.urllib.request.urlopen
     original_sleep = inference.time.sleep
     attempts = 0
@@ -117,15 +148,26 @@ def validate_no_auth_retry(errors: list[str]) -> None:
     try:
         try:
             inference.MacProviderClient("bad-key").complete([{"role": "user", "content": "candidate?"}])
+        except inference.AuthError as exc:
+            require(
+                "authentication failed" in str(exc),
+                "401 must surface as AuthError with 'authentication failed' in the message",
+                errors,
+            )
+            require(
+                getattr(exc, "kind", "") == "auth_failed",
+                "AuthError must carry kind='auth_failed' for attempt-log filtering",
+                errors,
+            )
         except inference.InferenceError as exc:
-            require(str(exc) == "authentication failed", "401 must surface as authentication failed", errors)
+            errors.append(f"401 must raise AuthError (got {type(exc).__name__}: {exc})")
         else:
-            errors.append("401 response must raise InferenceError")
+            errors.append("401 response must raise AuthError")
     finally:
         inference.urllib.request.urlopen = original_urlopen
         inference.time.sleep = original_sleep
 
-    require(attempts == 1, "authentication failures must not be retried", errors)
+    require(attempts == 1, "authentication failures must not be retried (no fan-out, no per-call retry)", errors)
 
 
 def validate() -> list[str]:

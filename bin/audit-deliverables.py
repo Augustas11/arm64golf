@@ -146,8 +146,16 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
         ),
         AuditItem(
             "live_credentials",
-            "complete" if os.environ.get("MACPROVIDER_API_KEY") else "pending",
-            "MACPROVIDER_API_KEY is present" if os.environ.get("MACPROVIDER_API_KEY") else "MACPROVIDER_API_KEY is not present",
+            "complete"
+            if (os.environ.get("MACPROVIDER_API_KEY") or os.environ.get("MACPROVIDER_DEMO_TOKEN"))
+            else "pending",
+            "MACPROVIDER_API_KEY is present"
+            if os.environ.get("MACPROVIDER_API_KEY")
+            else (
+                "MACPROVIDER_DEMO_TOKEN is present"
+                if os.environ.get("MACPROVIDER_DEMO_TOKEN")
+                else "no live credential present (MACPROVIDER_API_KEY or MACPROVIDER_DEMO_TOKEN)"
+            ),
         ),
     ]
 

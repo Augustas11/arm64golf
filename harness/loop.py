@@ -128,9 +128,12 @@ def run(args: argparse.Namespace) -> int:
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
         return 0
 
-    api_key = args.api_key or os.environ.get("MACPROVIDER_API_KEY")
-    if not api_key and not mock_responses:
-        raise SystemExit("MACPROVIDER_API_KEY is required unless --seed-only is used")
+    api_key = args.api_key or os.environ.get("MACPROVIDER_API_KEY", "")
+    demo_token = getattr(args, "demo_token", "") or os.environ.get("MACPROVIDER_DEMO_TOKEN", "")
+    if not api_key and not demo_token and not mock_responses:
+        raise SystemExit(
+            "set MACPROVIDER_API_KEY or MACPROVIDER_DEMO_TOKEN (or pass --seed-only / --mock-response-file)"
+        )
 
     for _ in range(args.rounds):
         before_summary = store.run_summary(module.PROBLEM_ID)
@@ -162,19 +165,32 @@ def run(args: argparse.Namespace) -> int:
                     n=request_n,
                     temperature=args.temperature,
                     top_p=args.top_p,
+                    inter_call_sleep_s=args.inter_call_sleep_s,
                 ),
+                demo_token=demo_token,
             )
             try:
                 responses = client.complete(messages)
             except InferenceError as exc:
+                # `kind` is a short stable label (quota_exhausted,
+                # burst_throttled, auth_failed, provider_unreachable, ...);
+                # `error` carries the human message. Logging both makes
+                # post-mortem queries trivially filterable.
+                status_kind = getattr(exc, "kind", "inference_error")
                 store.record_attempt(
                     module.PROBLEM_ID,
                     args.template,
-                    "inference_error",
+                    status_kind,
                     str(exc),
                     requested_n=request_n,
                     response_count=0,
                 )
+                # Stop the run on terminal failures — daily quota gone or
+                # credential rejected. Continuing would just log the same
+                # failure repeatedly until --rounds runs out.
+                if status_kind in {"quota_exhausted", "auth_failed", "no_credential"}:
+                    print(f"halting run: {status_kind} — {exc}")
+                    break
                 continue
 
             attempt_id = store.record_attempt(
@@ -248,6 +264,13 @@ def main() -> int:
     parser.add_argument("--private-key", default=str(REPO_ROOT / "data" / "sign.key"))
     parser.add_argument("--public-key", default=str(REPO_ROOT / "receipts" / "PUBKEY"))
     parser.add_argument("--api-key", default="")
+    parser.add_argument("--demo-token", default="")
+    parser.add_argument(
+        "--inter-call-sleep-s",
+        type=float,
+        default=0.5,
+        help="seconds to sleep between successive single-completion calls in a fanned-out batch (prevents per-minute burst throttling).",
+    )
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--provider", default=DEFAULT_PROVIDER)
     parser.add_argument("--rounds", type=int, default=1)

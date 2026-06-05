@@ -1,16 +1,33 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import argparse
-import json
 import os
-import subprocess
 import sys
 from pathlib import Path
+
+# Self-bootstrap: re-exec under .venv/bin/python if it exists and we aren't
+# already running there. The harness's child scripts use sys.executable, so
+# once we re-exec the whole chain inherits the venv interpreter. This means
+# `python3 bin/ready-live-run.py` Just Works without manual `source .venv/...`.
+#
+# Note: comparing resolved paths is WRONG — `.venv/bin/python3` is typically
+# a symlink to the base interpreter, so both resolve to the same target. The
+# canonical "am I in a venv?" test is `sys.prefix != sys.base_prefix`; in a
+# venv sys.prefix points at .venv, in the base interpreter they're equal.
+_REPO = Path(__file__).resolve().parents[1]
+_VENV_PY = _REPO / ".venv" / "bin" / "python3"
+_IN_VENV = sys.prefix != sys.base_prefix and Path(sys.prefix).resolve() == (_REPO / ".venv").resolve()
+if _VENV_PY.exists() and not _IN_VENV and not os.environ.get("ARM64GOLF_VENV_REEXEC"):
+    os.environ["ARM64GOLF_VENV_REEXEC"] = "1"
+    os.execv(str(_VENV_PY), [str(_VENV_PY), __file__, *sys.argv[1:]])
+
+import argparse
+import json
+import subprocess
 from typing import Any
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = _REPO
 
 
 def run(cmd: list[str], timeout_s: float = 90.0) -> tuple[int, str]:
@@ -69,12 +86,18 @@ def preflight_check(run_tests: bool) -> dict[str, Any]:
 
 
 def live_credentials_check() -> dict[str, Any]:
-    present = bool(os.environ.get("MACPROVIDER_API_KEY"))
+    api_key = bool(os.environ.get("MACPROVIDER_API_KEY"))
+    demo_token = bool(os.environ.get("MACPROVIDER_DEMO_TOKEN"))
+    present = api_key or demo_token
+    which = "MACPROVIDER_API_KEY" if api_key else ("MACPROVIDER_DEMO_TOKEN" if demo_token else "")
     return {
         "name": "live_credentials",
         "ok": present,
-        "summary": "MACPROVIDER_API_KEY is present" if present else "MACPROVIDER_API_KEY is not present",
-        "operator_actions": [] if present else ["Set MACPROVIDER_API_KEY in the operator environment before live model checks or inference."],
+        "summary": f"{which} is present" if present else "no live credential present",
+        "credential_kind": which,
+        "operator_actions": []
+        if present
+        else ["Set MACPROVIDER_API_KEY (long-lived) or MACPROVIDER_DEMO_TOKEN (24h) before live model checks or inference."],
     }
 
 
@@ -89,13 +112,14 @@ def air5_model_check(skip: bool, provider_aliases: list[str], url: str) -> dict[
                 "Coordinate with the air5 owner before installing models, upgrading provider software, editing config, or reconnecting the node."
             ],
         }
-    if not os.environ.get("MACPROVIDER_API_KEY") and "api.streamvc.live" in url:
+    have_credential = bool(os.environ.get("MACPROVIDER_API_KEY")) or bool(os.environ.get("MACPROVIDER_DEMO_TOKEN"))
+    if not have_credential and "api.streamvc.live" in url:
         return {
             "name": "air5_model",
             "ok": False,
             "skipped": True,
-            "summary": "MACPROVIDER_API_KEY is required for API model check",
-            "operator_actions": ["Set MACPROVIDER_API_KEY in the operator environment before checking the authenticated public API."],
+            "summary": "MACPROVIDER_API_KEY or MACPROVIDER_DEMO_TOKEN is required for API model check",
+            "operator_actions": ["Set MACPROVIDER_API_KEY or MACPROVIDER_DEMO_TOKEN before checking the authenticated public API."],
         }
 
     cmd = [sys.executable, "bin/check-air5-model.py", "--url", url]

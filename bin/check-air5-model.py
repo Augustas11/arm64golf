@@ -10,14 +10,17 @@ import urllib.request
 from typing import Any
 
 
-DEFAULT_MODELS_URL = "https://coordinator.streamvc.live/v1/models"
+DEFAULT_MODELS_URL = "https://api.streamvc.live/v1/models"
 TARGET_MODEL = "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
 TARGET_PROVIDER = "air5"
 
 
-def fetch_json(url: str, timeout_s: float, api_key: str = "") -> Any:
+def fetch_json(url: str, timeout_s: float, api_key: str = "", demo_token: str = "") -> Any:
     headers = {"Accept": "application/json"}
-    if api_key:
+    # Demo token wins if both are set (explicit short-lived credential).
+    if demo_token:
+        headers["X-Demo-Token"] = demo_token
+    elif api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout_s) as resp:
@@ -61,11 +64,12 @@ def main() -> int:
     parser.add_argument("--provider", default=TARGET_PROVIDER)
     parser.add_argument("--provider-alias", action="append", default=[])
     parser.add_argument("--api-key", default=os.environ.get("MACPROVIDER_API_KEY", ""))
+    parser.add_argument("--demo-token", default=os.environ.get("MACPROVIDER_DEMO_TOKEN", ""))
     parser.add_argument("--timeout-s", type=float, default=10.0)
     args = parser.parse_args()
 
     try:
-        payload = fetch_json(args.url, args.timeout_s, args.api_key)
+        payload = fetch_json(args.url, args.timeout_s, args.api_key, args.demo_token)
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:300]
         print(f"models check failed: HTTP {exc.code} {detail}", file=sys.stderr)
@@ -74,10 +78,23 @@ def main() -> int:
         print(f"models check failed: {exc}", file=sys.stderr)
         return 2
 
-    strings = flatten_strings(payload)
-    model_ok = args.model in strings
+    # The gateway's /v1/models response intentionally does NOT publish
+    # provider IDs by name (privacy / anti-fingerprinting). It only exposes
+    # provider_count and total_slots. So "provider_present" really means
+    # "at least one provider is currently serving this model", confirmed via
+    # the provider_count field on the matching model entry.
+    model_entry = None
+    for entry in payload.get("data", []) if isinstance(payload, dict) else []:
+        if isinstance(entry, dict) and entry.get("id") == args.model:
+            model_entry = entry
+            break
+
+    model_ok = model_entry is not None
+    provider_count = int(model_entry.get("provider_count", 0)) if model_entry else 0
+    total_slots = int(model_entry.get("total_slots", 0)) if model_entry else 0
+    provider_ok = provider_count >= 1 and total_slots >= 1
+
     provider_candidates = [args.provider, *args.provider_alias]
-    provider_ok = any(provider in strings for provider in provider_candidates)
     actions = operator_actions(model_ok, provider_ok, provider_candidates)
 
     print(
@@ -89,8 +106,9 @@ def main() -> int:
                 "provider": args.provider,
                 "provider_aliases": args.provider_alias,
                 "provider_present": provider_ok,
+                "provider_count": provider_count,
+                "total_slots": total_slots,
                 "operator_actions": actions,
-                "string_count": len(strings),
             },
             indent=2,
             sort_keys=True,
