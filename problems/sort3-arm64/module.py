@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-import hashlib
 import json
-from dataclasses import dataclass, field
 from pathlib import Path
+import sys
 from typing import Iterable
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from harness.module import Candidate, ResearchProblem, count_instructions, hash_normalized_source, normalize_assembly
 
 
 PROBLEM_ID = "sort3-arm64"
@@ -13,51 +18,60 @@ MASK64 = (1 << 64) - 1
 SIGN64 = 1 << 63
 
 
-@dataclass(frozen=True)
-class Candidate:
-    problem_id: str
-    source: str
-    normalized_source: str
-    candidate_hash: str
-    instruction_count: int
-    metadata: dict[str, object] = field(default_factory=dict)
-
-
 class VerificationError(ValueError):
     pass
 
 
+class Sort3Arm64Problem(ResearchProblem):
+    problem_id = PROBLEM_ID
+    root = MODULE_DIR
+
+    def baseline(self) -> tuple[int, str]:
+        source = (self.root / "reference.s").read_text()
+        return count_instructions(source), source
+
+    def load(self, submission_blob: str) -> Candidate:
+        normalized = normalize_assembly(submission_blob)
+        return Candidate(
+            problem_id=self.problem_id,
+            source=submission_blob,
+            normalized_source=normalized,
+            candidate_hash=hash_normalized_source(normalized),
+            instruction_count=count_instructions(normalized),
+            metadata={},
+        )
+
+    def verify(self, candidate: Candidate) -> bool:
+        try:
+            for case in load_tests():
+                got = run_candidate(candidate.normalized_source, case["input"])
+                if got != case["output"]:
+                    return False
+        except VerificationError:
+            return False
+        return True
+
+    def score(self, candidate: Candidate) -> int:
+        return candidate.instruction_count
+
+
+_PROBLEM = Sort3Arm64Problem()
+
+
 def baseline() -> tuple[int, str]:
-    source = (MODULE_DIR / "reference.s").read_text()
-    return count_instructions(source), source
+    return _PROBLEM.baseline()
 
 
 def load(submission_blob: str) -> Candidate:
-    normalized = normalize_source(submission_blob)
-    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-    return Candidate(
-        problem_id=PROBLEM_ID,
-        source=submission_blob,
-        normalized_source=normalized,
-        candidate_hash=digest,
-        instruction_count=count_instructions(normalized),
-        metadata={},
-    )
+    return _PROBLEM.load(submission_blob)
 
 
 def verify(candidate: Candidate) -> bool:
-    try:
-        for case in load_tests():
-            got = run_candidate(candidate.normalized_source, case["input"])
-            if got != case["output"]:
-                return False
-    except VerificationError:
-        return False
-    return True
+    return _PROBLEM.verify(candidate)
 
 
 def score(candidate: Candidate) -> int:
-    return candidate.instruction_count
+    return _PROBLEM.score(candidate)
 
 
 def load_tests() -> list[dict[str, list[int]]]:
@@ -69,17 +83,7 @@ def load_tests() -> list[dict[str, list[int]]]:
 
 
 def normalize_source(source: str) -> str:
-    lines: list[str] = []
-    for raw in source.splitlines():
-        line = raw.split("//", 1)[0].split(";", 1)[0].strip()
-        if not line or line.endswith(":") or line.startswith("."):
-            continue
-        lines.append(" ".join(line.replace(",", " , ").split()).replace(" ,", ","))
-    return "\n".join(lines) + ("\n" if lines else "")
-
-
-def count_instructions(source: str) -> int:
-    return len([line for line in normalize_source(source).splitlines() if line])
+    return normalize_assembly(source)
 
 
 def run_candidate(source: str, inputs: Iterable[int]) -> list[int]:
