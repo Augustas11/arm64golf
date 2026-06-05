@@ -18,6 +18,10 @@ git push -u origin main
 Current state: `origin` points at the private repo
 `https://github.com/Augustas11/arm64golf.git`.
 
+`bin/preflight.py` verifies that `origin` is this repo and that GitHub reports
+`PRIVATE`. Do not use `--allow-public-launch` unless the operator has explicitly
+approved making arm64golf public.
+
 ## Static Leaderboard Deployment
 
 The web surface is static and lives under `web/`.

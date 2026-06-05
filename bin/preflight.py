@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+EXPECTED_REPO = "Augustas11/arm64golf"
 
 
 def run(cmd: list[str], timeout_s: float = 10.0) -> tuple[int, str]:
@@ -34,9 +35,59 @@ def check_cmd(name: str) -> dict[str, object]:
     return {"ok": path is not None, "path": path or ""}
 
 
+def repo_slug_from_origin(origin: str) -> str:
+    value = origin.strip()
+    if value.endswith(".git"):
+        value = value[:-4]
+    if value.startswith("https://github.com/"):
+        return value.removeprefix("https://github.com/")
+    if value.startswith("git@github.com:"):
+        return value.removeprefix("git@github.com:")
+    return value
+
+
+def check_repo_visibility(origin: str, allow_public_launch: bool) -> dict[str, object]:
+    slug = repo_slug_from_origin(origin)
+    if slug != EXPECTED_REPO:
+        return {
+            "ok": False,
+            "expected": EXPECTED_REPO,
+            "repo": slug,
+            "visibility": "",
+            "summary": "origin does not match expected private test repo",
+        }
+    if not shutil.which("gh"):
+        return {"ok": False, "expected": EXPECTED_REPO, "repo": slug, "visibility": "", "summary": "gh unavailable"}
+
+    code, output = run(["gh", "repo", "view", slug, "--json", "nameWithOwner,url,visibility"], timeout_s=15)
+    if code != 0:
+        return {"ok": False, "expected": EXPECTED_REPO, "repo": slug, "visibility": "", "summary": output}
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return {"ok": False, "expected": EXPECTED_REPO, "repo": slug, "visibility": "", "summary": output}
+
+    visibility = str(payload.get("visibility", ""))
+    ok = visibility == "PRIVATE" or allow_public_launch
+    return {
+        "ok": ok,
+        "expected": EXPECTED_REPO,
+        "repo": payload.get("nameWithOwner", slug),
+        "url": payload.get("url", ""),
+        "visibility": visibility,
+        "private_required": not allow_public_launch,
+        "summary": "private test repo verified" if ok else "repo is public but private test mode is required",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Local preflight checks before an arm64golf live run.")
     parser.add_argument("--run-tests", action="store_true", help="Run pytest and native sandbox runner.")
+    parser.add_argument(
+        "--allow-public-launch",
+        action="store_true",
+        help="Allow a public GitHub repo; use only after explicit public launch approval.",
+    )
     args = parser.parse_args()
 
     checks: dict[str, object] = {
@@ -47,12 +98,15 @@ def main() -> int:
         "vercel": check_cmd("vercel"),
         "macprovider_api_key": {"ok": bool(os.environ.get("MACPROVIDER_API_KEY"))},
         "git_remote_origin": {"ok": False, "value": ""},
+        "github_repo_visibility": {"ok": False, "visibility": "", "summary": "not checked"},
         "gh_auth": {"ok": False, "summary": ""},
         "tests": {"ok": None, "summary": "skipped"},
     }
 
     code, output = run(["git", "remote", "get-url", "origin"])
     checks["git_remote_origin"] = {"ok": code == 0, "value": output}
+    if code == 0:
+        checks["github_repo_visibility"] = check_repo_visibility(output, args.allow_public_launch)
 
     if shutil.which("gh"):
         code, output = run(["gh", "auth", "status"], timeout_s=15)
@@ -79,6 +133,7 @@ def main() -> int:
         checks["sandbox_exec"],
         checks["macprovider_api_key"],
         checks["git_remote_origin"],
+        checks["github_repo_visibility"],
         checks["gh_auth"],
     ]
     if args.run_tests:

@@ -430,3 +430,33 @@ def test_air5_model_check_adds_authorization_header(monkeypatch) -> None:
     monkeypatch.setattr(script.urllib.request, "urlopen", fake_urlopen)
     assert script.fetch_json("https://example.test/v1/models", 3, "secret") == {"data": []}
     assert captured == {"auth": "Bearer secret", "timeout": 3}
+
+
+def test_preflight_parses_github_origin_urls() -> None:
+    script = load_script("bin/preflight.py")
+    assert script.repo_slug_from_origin("https://github.com/Augustas11/arm64golf.git") == "Augustas11/arm64golf"
+    assert script.repo_slug_from_origin("git@github.com:Augustas11/arm64golf.git") == "Augustas11/arm64golf"
+
+
+def test_preflight_requires_private_repo_visibility(monkeypatch) -> None:
+    script = load_script("bin/preflight.py")
+
+    def fake_run(cmd, timeout_s=10.0):
+        assert cmd == ["gh", "repo", "view", "Augustas11/arm64golf", "--json", "nameWithOwner,url,visibility"]
+        return 0, '{"nameWithOwner":"Augustas11/arm64golf","url":"https://github.com/Augustas11/arm64golf","visibility":"PUBLIC"}'
+
+    monkeypatch.setattr(script.shutil, "which", lambda name: "/usr/bin/gh" if name == "gh" else None)
+    monkeypatch.setattr(script, "run", fake_run)
+    result = script.check_repo_visibility("https://github.com/Augustas11/arm64golf.git", allow_public_launch=False)
+    assert result["ok"] is False
+    assert result["visibility"] == "PUBLIC"
+
+    allowed = script.check_repo_visibility("https://github.com/Augustas11/arm64golf.git", allow_public_launch=True)
+    assert allowed["ok"] is True
+
+
+def test_preflight_rejects_unexpected_origin() -> None:
+    script = load_script("bin/preflight.py")
+    result = script.check_repo_visibility("https://github.com/Augustas11/something-else.git", allow_public_launch=False)
+    assert result["ok"] is False
+    assert result["summary"] == "origin does not match expected private test repo"
