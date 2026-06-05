@@ -127,7 +127,12 @@ PASS_B_TARGET_COUNT = 17
 
 def build_prompt(assembly: str, instruction_count: int, template: str = "no_failed_context") -> list[dict[str, str]]:
     if template in PASS_B_TARGET_TEMPLATES:
-        target_count = PASS_B_TARGET_COUNT
+        # Floor at PASS-B threshold (17) when current best is at or above
+        # the baseline, but track strictly below the best once we cross
+        # into PASS-B/PASS-C territory. Without the min(), a probe run
+        # against current best = 12 would still ask the model for "17
+        # instructions" — i.e. a worse routine.
+        target_count = max(min(instruction_count - 1, PASS_B_TARGET_COUNT), 1)
     else:
         target_count = max(instruction_count - 1, 1)
     body = ABLATION_TEMPLATES[template].format(

@@ -1279,12 +1279,14 @@ def test_ablation_templates_include_failed_context() -> None:
     }
 
 
-def test_pass_b_target_templates_pin_target_to_17_regardless_of_best() -> None:
+def test_pass_b_target_templates_cap_target_at_17_until_best_below_18() -> None:
     """v0.3 produced verified non-baseline routines at 24 instructions.
-    Without a hard pin, --template csel_hint with current_best=24 would
-    ask the model for "23 instructions" — useless for PASS-B. The
-    instruction-count variants must pin target_count to 17 regardless
-    of what the current leaderboard best is."""
+    Without a cap, --template csel_hint with current_best=24 would ask
+    the model for "23 instructions" — useless for PASS-B. The
+    instruction-count variants must cap target_count at 17 (PASS-B
+    threshold) so the prompt stays anchored on the PASS-B goal even
+    when a verified-but-still-too-long routine becomes the leaderboard
+    best."""
     from harness.prompts import build_prompt, PASS_B_TARGET_TEMPLATES
 
     for template in PASS_B_TARGET_TEMPLATES:
@@ -1294,8 +1296,28 @@ def test_pass_b_target_templates_pin_target_to_17_regardless_of_best() -> None:
             template=template,
         )[-1]["content"]
         assert "with 17 instructions" in body, (
-            f"{template} must hard-pin target_count to 17 (PASS-B threshold), "
-            f"not drift with the current leaderboard best"
+            f"{template} must cap target_count at 17 (PASS-B threshold) when "
+            f"current best is still ≥18, not drift with the current best"
+        )
+
+
+def test_pass_b_target_templates_track_below_best_once_under_18() -> None:
+    """Once a probe lands a sub-18 routine (e.g. the csel_hint probe's
+    12-instruction win), the prompt must start asking for "current
+    best - 1" rather than continue asking for 17 (which would be a
+    worse routine). The cap is a floor at PASS-B until we cross it;
+    after that, we track the leaderboard."""
+    from harness.prompts import build_prompt, PASS_B_TARGET_TEMPLATES
+
+    for template in PASS_B_TARGET_TEMPLATES:
+        body = build_prompt(
+            assembly="cmp x0, x1\ncsel x3, x1, x0, le\ncsel x0, x0, x1, le\nmov x1, x3",
+            instruction_count=12,
+            template=template,
+        )[-1]["content"]
+        assert "with 11 instructions" in body, (
+            f"{template} with current best = 12 must ask for 11, not 17 "
+            f"(asking for 17 would be a strict regression)"
         )
 
 
