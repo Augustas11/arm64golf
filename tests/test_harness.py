@@ -130,6 +130,21 @@ def test_validate_docs_rejects_premature_readme_result_claim(tmp_path: Path) -> 
     assert any("must not claim" in error for error in errors)
 
 
+def test_validate_report_accepts_current_report() -> None:
+    script = load_script("bin/validate-report.py")
+    assert script.validate() == []
+
+
+def test_validate_report_rejects_stale_report(tmp_path: Path, monkeypatch) -> None:
+    script = load_script("bin/validate-report.py")
+    stale_report = tmp_path / "REPORT.md"
+    stale_report.write_text(Path("REPORT.md").read_text() + "\nmanual stale edit\n")
+    monkeypatch.setattr(script, "REPORT", stale_report)
+
+    errors = script.validate()
+    assert any("must match" in error for error in errors)
+
+
 def test_parse_chat_response_returns_all_choices() -> None:
     raw = b'{"choices":[{"message":{"content":"cmp x0, x1"}},{"message":{"content":"ret"}}]}'
     assert parse_chat_response(raw) == ["cmp x0, x1", "ret"]
@@ -564,6 +579,7 @@ def test_write_report_renders_pending_state(tmp_path: Path) -> None:
     assert "bin/validate-inference-config.py" in report
     assert "bin/validate-sandbox.py" in report
     assert "bin/validate-receipts.py" in report
+    assert "bin/validate-report.py" in report
 
 
 def test_write_report_renders_pass_b_evidence(tmp_path: Path) -> None:
@@ -748,6 +764,7 @@ def test_deliverable_audit_uses_spec_doc_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "report_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["spec"].status == "missing"
@@ -765,6 +782,7 @@ def test_deliverable_audit_uses_readme_doc_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "report_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["readme"].status == "missing"
@@ -782,6 +800,7 @@ def test_deliverable_audit_uses_sort3_contract_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "report_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["sort3_module"].status == "missing"
@@ -799,6 +818,7 @@ def test_deliverable_audit_uses_harness_smoke_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "report_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["harness"].status == "missing"
@@ -816,6 +836,7 @@ def test_deliverable_audit_uses_inference_config_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "report_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["inference_path"].status == "missing"
@@ -833,10 +854,29 @@ def test_deliverable_audit_uses_sandbox_validator(monkeypatch) -> None:
     monkeypatch.setattr(script, "sandbox_validator_ok", lambda: False)
     monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
     monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "report_validator_ok", lambda: True)
 
     items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
     assert items["sandbox"].status == "missing"
     assert "sandbox contract validates" in items["sandbox"].summary
+
+
+def test_deliverable_audit_uses_report_validator(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+    monkeypatch.setattr(script, "git_repo_status", lambda check_github_visibility=True: script.AuditItem("github_repo", "pending", "offline"))
+    monkeypatch.setattr(script, "spec_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "readme_doc_ok", lambda: True)
+    monkeypatch.setattr(script, "sort3_module_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "harness_smoke_ok", lambda: True)
+    monkeypatch.setattr(script, "inference_config_ok", lambda: True)
+    monkeypatch.setattr(script, "sandbox_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "receipt_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "web_validator_ok", lambda: True)
+    monkeypatch.setattr(script, "report_validator_ok", lambda: False)
+
+    items = {item.id: item for item in script.audit_items(check_github_visibility=False)}
+    assert items["report"].status == "missing"
+    assert "tracked leaderboard evidence" in items["report"].summary
 
 
 def test_validate_web_accepts_current_static_assets() -> None:

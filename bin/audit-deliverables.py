@@ -161,16 +161,16 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
     )
 
     report_status = "missing"
-    report_summary = "REPORT.md is missing"
-    if file_exists("REPORT.md"):
+    report_summary = "REPORT.md is missing or does not match tracked leaderboard evidence"
+    if report_validator_ok():
         if file_contains("REPORT.md", ["Status: pending", "Pending Before PASS/FAIL Run"]):
             report_status = "pending"
-            report_summary = "REPORT.md records pending state and remaining live-run gates"
+            report_summary = "REPORT.md matches tracked leaderboard evidence and records pending live-run gates"
         if file_contains("REPORT.md", ["Status: pass-a"]) or file_contains("REPORT.md", ["Status: pass-b"]) or file_contains(
             "REPORT.md", ["Status: pass-c"]
         ) or file_contains("REPORT.md", ["Status: fail"]):
             report_status = "complete"
-            report_summary = "REPORT.md records a terminal PASS/FAIL outcome"
+            report_summary = "REPORT.md matches tracked leaderboard evidence and records a terminal PASS/FAIL outcome"
     items.append(AuditItem("report", report_status, report_summary))
 
     items.append(
@@ -228,6 +228,11 @@ def spec_doc_ok() -> bool:
 
 def readme_doc_ok() -> bool:
     code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-docs.py"), "--target", "readme", "--json"])
+    return code == 0
+
+
+def report_validator_ok() -> bool:
+    code, _ = run([sys.executable, str(REPO_ROOT / "bin" / "validate-report.py"), "--json"])
     return code == 0
 
 

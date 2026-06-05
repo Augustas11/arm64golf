@@ -75,7 +75,7 @@ def run_candidate(
             }
 
         cmd = ["sandbox-exec", "-f", str(PROFILE), str(exe_path)]
-        process_timeout_s = max(timeout_ms / 1000 + 1.0, 2.0)
+        process_timeout_s = max(timeout_ms / 1000 + 1.0, 4.0)
         proc = subprocess.run(
             cmd,
             cwd=REPO_ROOT,

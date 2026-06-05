@@ -74,15 +74,17 @@ Before starting a real search:
    native runner, escape-vector blocks, timeout, and memory-cap reporting
 9. run `bin/validate-receipts.py --json` to confirm every leaderboard row is
    backed by a matching signed receipt
-10. run `bin/validate-web.py --json` to confirm the static leaderboard files
+10. run `bin/validate-report.py --json` to confirm `REPORT.md` is generated
+    from tracked leaderboard evidence and still names the pending live-run gates
+11. run `bin/validate-web.py --json` to confirm the static leaderboard files
    match the JSON contract before preview/deploy
-11. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
+12. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
    gate; it should report no blockers before a live search
-12. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
+13. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
    intended provider id are visible; use `--url https://api.streamvc.live/v1/models`
    with `MACPROVIDER_API_KEY` if the coordinator endpoint is unavailable
-13. run local preflight and sandbox tests on the operator machine
-14. run the harness with a small round count before a 10,000-call run
+14. run local preflight and sandbox tests on the operator machine
+15. run the harness with a small round count before a 10,000-call run
 
 Example:
 
@@ -93,6 +95,7 @@ bin/validate-harness-smoke.py --json
 bin/validate-inference-config.py --json
 bin/validate-sandbox.py --json
 bin/validate-receipts.py --json
+bin/validate-report.py --json
 bin/validate-web.py --json
 bin/ready-live-run.py --run-tests --json
 bin/check-air5-model.py --provider-alias m4
