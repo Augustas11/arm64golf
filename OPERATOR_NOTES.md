@@ -12,10 +12,11 @@ The repo is private during the test phase. Do not make it public until the
 operator explicitly approves launch.
 
 ```bash
-gh auth switch -u Augustas11
-gh repo create Augustas11/arm64golf --private --source=. --remote=origin --description "Open-weight coding models on Apple Silicon search the ARM64 sort/hash frontier. Powered by MacProvider."
 git push -u origin main
 ```
+
+Current state: `origin` points at the private repo
+`https://github.com/Augustas11/arm64golf.git`.
 
 ## Static Leaderboard Deployment
 

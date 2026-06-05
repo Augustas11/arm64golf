@@ -9,6 +9,8 @@ handoff and live MacProvider credentials are still pending.
 
 ## Current Evidence
 
+- Private GitHub repo exists at `https://github.com/Augustas11/arm64golf` and
+  `main` has been pushed there. GitHub reports visibility `PRIVATE`.
 - Baseline candidate verifies locally on 1200 deterministic `sort3-arm64`
   tests through the native ARM64 sandbox runner.
 - Baseline score is 18 instructions.
@@ -28,7 +30,6 @@ handoff and live MacProvider credentials are still pending.
 
 ## Pending Before PASS/FAIL Run
 
-- Create or use the private `Augustas11/arm64golf` test repo and push `main`.
 - Complete the air5 coder-model handoff.
 - Confirm live provider id and model availability with `bin/check-air5-model.py`.
 - Provide `MACPROVIDER_API_KEY` for authenticated model checks and live
