@@ -13,7 +13,6 @@ out/
 .omx/
 *.sqlite
 data/
-receipts/*.json
 .env*
 
 # Build artifacts
