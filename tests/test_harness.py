@@ -665,3 +665,62 @@ def test_validate_receipts_rejects_row_score_mismatch(tmp_path: Path) -> None:
 
     errors = script.validate(leaderboard, Path("receipts"))
     assert any("score" in error for error in errors)
+
+
+def test_ready_live_run_reports_skipped_model_check_as_blocker(monkeypatch) -> None:
+    script = load_script("bin/ready-live-run.py")
+
+    def fake_json_command_check(name, cmd, timeout_s=90.0):
+        return {"name": name, "ok": True, "returncode": 0, "output": {"ok": True}}
+
+    monkeypatch.setattr(script, "json_command_check", fake_json_command_check)
+    monkeypatch.setattr(
+        script,
+        "preflight_check",
+        lambda run_tests: {"name": "preflight", "ok": True, "returncode": 0, "output": {}, "macprovider_api_key_present": False},
+    )
+
+    args = type(
+        "Args",
+        (),
+        {
+            "offline_audit": True,
+            "run_tests": False,
+            "skip_model_check": True,
+            "provider_alias": ["m4"],
+            "models_url": "https://api.streamvc.live/v1/models",
+        },
+    )()
+    payload = script.readiness(args)
+    assert payload["ready"] is False
+    assert "air5_model" in payload["blockers"]
+
+
+def test_ready_live_run_can_report_ready_when_all_checks_pass(monkeypatch) -> None:
+    script = load_script("bin/ready-live-run.py")
+
+    def fake_json_command_check(name, cmd, timeout_s=90.0):
+        return {"name": name, "ok": True, "returncode": 0, "output": {"ok": True}}
+
+    monkeypatch.setattr(script, "json_command_check", fake_json_command_check)
+    monkeypatch.setattr(
+        script,
+        "preflight_check",
+        lambda run_tests: {"name": "preflight", "ok": True, "returncode": 0, "output": {}, "macprovider_api_key_present": True},
+    )
+    monkeypatch.setattr(script, "air5_model_check", lambda skip, provider_aliases, url: {"name": "air5_model", "ok": True})
+
+    args = type(
+        "Args",
+        (),
+        {
+            "offline_audit": False,
+            "run_tests": True,
+            "skip_model_check": False,
+            "provider_alias": ["m4"],
+            "models_url": "https://api.streamvc.live/v1/models",
+        },
+    )()
+    payload = script.readiness(args)
+    assert payload["ready"] is True
+    assert payload["blockers"] == []

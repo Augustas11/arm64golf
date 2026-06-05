@@ -66,11 +66,13 @@ Before starting a real search:
    backed by a matching signed receipt
 6. run `bin/validate-web.py --json` to confirm the static leaderboard files
    match the JSON contract before preview/deploy
-7. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
+7. run `bin/ready-live-run.py --run-tests --json` as the aggregate readiness
+   gate; it should report no blockers before a live search
+8. run `bin/check-air5-model.py --provider-alias m4` until the coder model and
    intended provider id are visible; use `--url https://api.streamvc.live/v1/models`
    with `MACPROVIDER_API_KEY` if the coordinator endpoint is unavailable
-8. run local preflight and sandbox tests on the operator machine
-9. run the harness with a small round count before a 10,000-call run
+9. run local preflight and sandbox tests on the operator machine
+10. run the harness with a small round count before a 10,000-call run
 
 Example:
 
@@ -78,6 +80,7 @@ Example:
 bin/audit-deliverables.py --json
 bin/validate-receipts.py --json
 bin/validate-web.py --json
+bin/ready-live-run.py --run-tests --json
 bin/check-air5-model.py --provider-alias m4
 bin/preflight.py --run-tests
 .venv/bin/pytest sandbox/tests -q
@@ -94,6 +97,13 @@ GitHub API, use `bin/audit-deliverables.py --offline --json` for the local
 artifact audit and run `bin/preflight.py --run-tests` or `gh repo view
 Augustas11/arm64golf --json visibility` separately to prove the repo is still
 private.
+
+`bin/ready-live-run.py` is the aggregate gate, but it is intentionally
+conservative: it reports blockers until `MACPROVIDER_API_KEY`, GitHub private
+visibility, preflight, and the air5 model check all pass in the same operator
+environment. If a command sandbox blocks nested GitHub API calls, run the
+individual checks above from the operator shell and keep the readiness output
+as evidence of the remaining external blockers.
 
 The `--mock-response-file` command is the offline end-to-end smoke. It records
 one synthetic attempt and exercises candidate loading, native sandbox
