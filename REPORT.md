@@ -5,9 +5,9 @@ Status: pass-c
 ## Network configuration this canary depended on
 
 The v0.3 canary and the v0.3 post-canary probes (csel_hint,
-dual_example, temperature sweep) all ran against production
-MacProvider at api.streamvc.live, with the following non-default
-config in effect:
+dual_example, temperature sweep, chain_of_thought at 512 and 1024
+max_tokens) all ran against production MacProvider at
+api.streamvc.live, with the following non-default config in effect:
 
 - `gateway.timeouts.coordinator_header_timeout_seconds: 60` (default: 10;
   bumped 2026-06-05 because a 10s ceiling truncated any non-streaming
@@ -16,16 +16,17 @@ config in effect:
 - `gateway.quotas.account_daily_tokens: 20000000` (default: 100000;
   default was insufficient for a single 200-call canary).
 
-These were operator config changes made during v0.1 / v0.2 sessions to
-unblock the canary; they remain in effect on Pearl VPS (159.223.165.194)
-as the network's standing config. A future "clean default config"
-canary would need to either run with non-default timeouts, switch to
-streaming, or restrict the workload to fit the defaults.
+These were operator config changes made during v0.1 / v0.2 sessions
+to unblock the canary; they remain in effect on Pearl VPS
+(159.223.165.194) as the network's standing config. A future "clean
+default config" canary would need to either run with non-default
+timeouts, switch to streaming, or restrict the workload to fit the
+defaults.
 
 The v0.3 harness adds its own bound on the buyer side
-(`InferenceConfig.max_tokens=256`, threaded through to the chat
-completions payload) so the 60s timeouts behave as a fallback rather
-than a load-bearing knob.
+(`InferenceConfig.max_tokens=256` by default, bumped to 1024 for the
+CoT probes to give the model room for reasoning + a final fenced
+code block).
 
 ## Verdict Interpretation
 
@@ -41,8 +42,7 @@ threshold. Three readings need to be kept distinct:
 
 - **PASS-B (≤17 instructions verified)** — cleared by the v0.3
   post-canary `csel_hint` probe: `57b2aa236342`, 12 instructions,
-  three cmp + csel + csel + mov blocks (one per comparator in a
-  sort-three network).
+  three cmp + csel + csel + mov blocks.
 
 - **PASS-C (≤16 instructions verified)** — same candidate clears
   this threshold (12 ≤ 16).
@@ -56,70 +56,69 @@ deterministic test cases through the sandboxed runner) and the
 leaderboard claim is honest, but the credit for the compression
 goes to the prompt engineer, not to model search.
 
-## Search Discovery — what the post-canary probes found
+## Search Discovery — closing the 7B chapter
 
-The dual_example probe (200-cap, withholds the csel pattern but
-still names the goal) and the temperature sweep (dual_example ×
-temp ∈ {0.3, 0.5, 0.9}, 32-call segments at each setting) together
-test whether Qwen2.5-Coder-7B-4bit can search for denser structure
-on its own:
+The post-canary probes test progressively stronger versions of "can
+the model find denser structure without the answer being handed
+over." Final tally:
 
-| stage | new evals | verified | unique verified hashes | best score |
-|---|---|---|---|---|
-| dual_example @ temp=0.7 | 93 | 21 | +2 (lt-variant 12, redundant 16) | 12 |
-| temp=0.3 segment | 22 | 18 | +0 | 12 |
-| temp=0.5 segment | 21 | 13 | +0 | 12 |
-| temp=0.9 segment | 22 | 4 | +0 | 12 |
+| probe | template | new evals | verified | unique new hashes | best score |
+|---|---|---|---|---|---|
+| csel_hint | csel_hint @ temp=0.7 | 10 | 1 | +1 (12) | 12 |
+| dual_example | dual_example @ temp=0.7 | 93 | 21 | +2 (12 variant, redundant 16) | 12 |
+| temp sweep | dual_example × {0.3, 0.5, 0.9} | 65 | 35 | +0 | 12 |
+| CoT @ 512 | chain_of_thought, max_tokens=512 | 25 | 0 | +0 (model token-starved, never reached the final code block) | — |
+| CoT @ 1024 | chain_of_thought, max_tokens=1024 | 30 | 0 | +0 (model emits valid code but routines fail edge cases) | — |
 
-Across the four probes (158 new evaluations, 56 new verified
-candidates), **only two unique verified hashes appeared, both at
-score 12, both csel-tile variants** (`57b2aa236342` with `le`,
-`b4d6f989140e` with `lt`). Zero candidates below 12. Zero new
-structures.
+Across 5 probes / 223 new evaluations after the v0.3 canary, only
+two unique verified hashes appeared — both at score 12, both
+csel-tile variants (`57b2aa236342` with `le`, `b4d6f989140e` with
+`lt`). Zero candidates below 12. Zero new structures.
 
-Per-temperature pattern:
-- Lower temperature converges the model on whatever it considers the
-  best routine — at 0.3, 18 of 22 evaluations verified, all at 12,
-  only 4 case-1 failures.
-- Higher temperature buys broken ARM64, not creative compression. At
-  0.9, the verified rate collapses to 4/22, case-1 failures spike to
-  14, and the verified pile is still nothing but the same csel
-  pattern.
+**The CoT regression is the most diagnostic result.** With enough
+token budget for the model to actually complete its reasoning
+(max_tokens=1024), the model reaches the final fenced code block
+in 27 of 30 attempts and the extractor parses valid assembly. But
+0 of those 30 routines verify. The dominant failure modes flip
+from the csel-hint-driven probes (where verified rate was high and
+errors were mostly ISA pitfalls) to **20× case-2 failed
+(already-ascending input) + 7× case-1 failed (all-equal triple)**.
+The model is "reasoning" itself out of correct routines: it
+identifies the third comparator as "redundant with the first"
+(plausible-looking but wrong — that comparator is what guarantees
+correctness on the already-sorted case) and removes it.
 
-Error mode shift confirms the reading. The dual_example block did
-NOT carry the csel pattern, so without that scaffolding the model
-regressed to unconditional-swap routines: case-1 (all-equal triple)
-failures climbed from 15x in the v0.3 canary to 92x across the
-combined probes, and case-2 (already-ascending) from 18x to 43x.
-csel_hint was acting as training wheels for both compression *and*
-edge-case correctness, not just compression.
+This is a classic small-model CoT regression. The explicit
+step-by-step prose lets the model talk itself into eliminating
+load-bearing instructions that the implicit-pattern prompts left
+alone.
 
-**Reading.** For Qwen2.5-Coder-7B-Instruct-4bit on air5 under the
-v0.3 prompt family and the sampling temperatures we tested, the
-instruction-count floor is **12, reachable only when the prompt
-names the csel pattern explicitly**. The model appears to have
-exactly two sort3 routines in its working repertoire — the
-18-instruction bitmask-eor pattern (the baseline shape) and the
-12-instruction csel pattern — and only produces the latter under
-explicit prompting. More tokens of the same prompt and more
-sampling temperatures do not unlock new structure.
+**Updated prior on the prompt-vs-model question:** post-CoT,
+roughly **92/8 model.** CoT — the strongest prompt-sophistication
+lever — didn't unlock new structure and actively regressed verified
+output. The prompt-engineering door is closed on 7B with high
+confidence.
 
-Caveats on the reading:
+**For Qwen2.5-Coder-7B-Instruct-4bit on this sort3 problem under
+arm64golf's prompt family + sampling + reasoning experiments:**
 
-- Prompt sophistication has not been exhausted. Chain-of-thought,
-  self-critique loops, and instruction-deletion framings have not
-  been tried. Calibrated prior on whether CoT breaks the 12-floor
-  on 7B: ~15%. CoT may extract one or two saved instructions if
-  there is a denser pattern adjacent in the model's training
-  distribution; it is unlikely to surface fundamentally new
-  structure that 200 + 65 dual_example samples failed to find.
-- 7B-4bit is on the small end of modern coding models. The
-  marketplace test — same harness, same prompts, same sort3
-  problem, different (provider, model) pair on MacProvider — is
-  the cleanest experiment to disambiguate model-capability from
-  prompt-engineering as the binding constraint. It is exactly the
-  arm64golf product story and is the next obvious step once a
-  second (provider, model) is available on the network.
+- The model has exactly two sort3 routines in its working
+  repertoire: 18-instruction bitmask-eor (the baseline shape) and
+  12-instruction csel.
+- The 12-instruction pattern fires only when the prompt explicitly
+  names it.
+- More sampling, different temperatures, and chain-of-thought
+  reasoning all fail to surface a sub-12 routine. CoT makes the
+  model worse, not better.
+- Any further compression on this problem requires a different
+  model.
+
+The clean next experiment is the marketplace test — same harness,
+same prompts, different (provider, model) pair on MacProvider.
+That is exactly the arm64golf product story (showing how the
+marketplace surfaces the cost/quality Pareto frontier for a
+concrete optimization problem) and is the next obvious step once a
+second (provider, model) is available on the network.
 
 ## Verdict
 
@@ -128,13 +127,13 @@ Current derived verdict: PASS-C.
 ## Run Evidence
 
 - problem: `sort3-arm64`
-- attempts: 74
-- requested candidates: 592
-- candidate responses: 273
-- evaluated responses: 273
+- attempts: 90
+- requested candidates: 720
+- candidate responses: 328
+- evaluated responses: 328
 - verified evaluations: 111
-- failed evaluations: 162
-- evaluations with error text: 162
+- failed evaluations: 217
+- evaluations with error text: 217
 - best verified score: 12
 - first verified response: 2
 - first 17-instruction response: 115
@@ -150,8 +149,74 @@ This evidence is for manual PASS-C review only; automatic PASS-C still requires 
 
 ## Top Evaluation Errors
 
-- 92x case 1 failed
-- 43x case 2 failed
+- 100x case 1 failed
+- 65x case 2 failed
+- 1x /private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:6:5: error: unexpected token at start of statement
+    1. **Block 1**: `cmp x0, x1 / csel x3, x1, x0, le / csel x0, x0, x1, le / mov x1, x3`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:7:5: error: unexpected token at start of statement
+    - **Comparison**: `x0 <= x1`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:8:5: error: unexpected token at start of statement
+    - **Reads**: `x0, x1`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:9:5: error: unexpected token at start of statement
+    - **Mutates**: `x0, x1, x3`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:10:5: error: unexpected token at start of statement
+    - **Untouched**: `x2`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:11:5: error: unexpected token at start of statement
+    - **Necessary**: Yes, ensures `x0 <= x1` before further comparisons.
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:12:5: error: unexpected token at start of statement
+    2. **Block 2**: `cmp x1, x2 / csel x3, x2, x1, le / csel x1, x1, x2, le / mov x2, x3`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:13:5: error: unexpected token at start of statement
+    - **Comparison**: `x1 <= x2`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:14:5: error: unexpected token at start of statement
+    - **Reads**: `x1, x2`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:15:5: error: unexpected token at start of statement
+    - **Mutates**: `x1, x2, x3`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:16:5: error: unexpected token at start of statement
+    - **Untouched**: `x0`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:17:5: error: unexpected token at start of statement
+    - **Necessary**: Yes, ensures `x1 <= x2` before further comparisons.
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:18:5: error: unexpected token at start of statement
+    3. **Block 3**: `cmp x0, x1 / csel x3, x1, x0, le / csel x0, x0, x1, le / mov x1, x3`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:19:5: error: unexpected token at start of statement
+    - **Comparison**: `x0 <= x1`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:20:5: error: unexpected token at start of statement
+    - **Reads**: `x0, x1`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:21:5: error: unexpected token at start of statement
+    - **Mutates**: `x0, x1, x3`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:22:5: error: unexpected token at start of statement
+    - **Untouched**: `x2`
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:23:5: error: unexpected token at start of statement
+    - **Necessary**: No, redundant with Block 1.
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:25:19: error: unexpected token in argument list
+    The redundant block is Block 3, which is identical to Block 1 and does not add any new information or necessary operations. This block can be eliminated.
+                  ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:27:5: error: invalid character in input
+    ```arm64
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:27:5: error: unexpected token at start of statement
+    ```arm64
+    ^
+/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:35:5: error: too few operands for instruction
+    mov
+    ^~~
 - 1x /private/tmp/arm64golf-sandbox/run-2478qtx3/candidate.s:7:5: error: unrecognized instruction mnemonic
     teqz x3, x3
     ^
@@ -179,33 +244,6 @@ This evidence is for manual PASS-C review only; automatic PASS-C still requires 
 /private/tmp/arm64golf-sandbox/run-3s3ho4w8/candidate.s:22:10: error: invalid operand for instruction
     eors x2, x2, x7
          ^
-- 1x /private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:7:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
-    eorr x4, x0, x1
-    ^
-/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:9:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
-    eorr x0, x0, x4
-    ^
-/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:10:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
-    eorr x1, x1, x4
-    ^
-/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:13:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
-    eorr x4, x1, x2
-    ^
-/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:15:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
-    eorr x1, x1, x4
-    ^
-/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:16:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
-    eorr x2, x2, x4
-    ^
-/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:19:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
-    eorr x4, x0, x1
-    ^
-/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:21:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
-    eorr x0, x0, x4
-    ^
-/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:22:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?
-    eorr x1, x1, x4
-    ^
 
 ## Completion Gate Audit
 

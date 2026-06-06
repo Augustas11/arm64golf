@@ -1,9 +1,9 @@
 {
-  "attempt_count": 74,
-  "candidate_response_count": 273,
+  "attempt_count": 90,
+  "candidate_response_count": 328,
   "last_update": "2026-06-05T22:04:45Z",
   "problem_id": "sort3-arm64",
-  "requested_candidate_count": 592,
+  "requested_candidate_count": 720,
   "rows": [
     {
       "candidate_hash": "57b2aa2363428e955d361e45d4204a9c6bf9cf205fe32ec94d4ed4813ac5a2ff",
@@ -45,8 +45,8 @@
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
       "rank": 4,
-      "receipt_signature": "/s4mz1uZdxFgCaaI7d08u6JtAMenG99xHZu5PsMSgOVDCAlCCcJ1NeMhVzZorKEuCnZl9kRTb31iTHwSFHUxAA==",
-      "receipt_signature_short": "/s4mz1uZdxFgCaaI",
+      "receipt_signature": "oohYX7sTa3ISX/mFWIH+9obLwl4V5zCUS5QccUDASnrZqrFDrTR18ogzTCdD+/A2bHU4UP7qYAEO+rOkpSI7Ag==",
+      "receipt_signature_short": "oohYX7sTa3ISX/mF",
       "score": 18
     },
     {
@@ -84,12 +84,12 @@
     }
   ],
   "run_summary": {
-    "attempt_count": 74,
+    "attempt_count": 90,
     "best_verified_score": 12,
-    "candidate_response_count": 273,
-    "evaluation_count": 273,
-    "evaluation_error_count": 162,
-    "failed_evaluation_count": 162,
+    "candidate_response_count": 328,
+    "evaluation_count": 328,
+    "evaluation_error_count": 217,
+    "failed_evaluation_count": 217,
     "first_16_response": 115,
     "first_17_response": 115,
     "first_verified_response": 2,
@@ -118,15 +118,19 @@
       }
     ],
     "near_best_unique_structure_count": 1,
-    "requested_candidate_count": 592,
+    "requested_candidate_count": 720,
     "top_evaluation_errors": [
       {
-        "count": 92,
+        "count": 100,
         "error": "case 1 failed"
       },
       {
-        "count": 43,
+        "count": 65,
         "error": "case 2 failed"
+      },
+      {
+        "count": 1,
+        "error": "/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:6:5: error: unexpected token at start of statement\n    1. **Block 1**: `cmp x0, x1 / csel x3, x1, x0, le / csel x0, x0, x1, le / mov x1, x3`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:7:5: error: unexpected token at start of statement\n    - **Comparison**: `x0 <= x1`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:8:5: error: unexpected token at start of statement\n    - **Reads**: `x0, x1`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:9:5: error: unexpected token at start of statement\n    - **Mutates**: `x0, x1, x3`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:10:5: error: unexpected token at start of statement\n    - **Untouched**: `x2`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:11:5: error: unexpected token at start of statement\n    - **Necessary**: Yes, ensures `x0 <= x1` before further comparisons.\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:12:5: error: unexpected token at start of statement\n    2. **Block 2**: `cmp x1, x2 / csel x3, x2, x1, le / csel x1, x1, x2, le / mov x2, x3`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:13:5: error: unexpected token at start of statement\n    - **Comparison**: `x1 <= x2`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:14:5: error: unexpected token at start of statement\n    - **Reads**: `x1, x2`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:15:5: error: unexpected token at start of statement\n    - **Mutates**: `x1, x2, x3`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:16:5: error: unexpected token at start of statement\n    - **Untouched**: `x0`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:17:5: error: unexpected token at start of statement\n    - **Necessary**: Yes, ensures `x1 <= x2` before further comparisons.\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:18:5: error: unexpected token at start of statement\n    3. **Block 3**: `cmp x0, x1 / csel x3, x1, x0, le / csel x0, x0, x1, le / mov x1, x3`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:19:5: error: unexpected token at start of statement\n    - **Comparison**: `x0 <= x1`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:20:5: error: unexpected token at start of statement\n    - **Reads**: `x0, x1`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:21:5: error: unexpected token at start of statement\n    - **Mutates**: `x0, x1, x3`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:22:5: error: unexpected token at start of statement\n    - **Untouched**: `x2`\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:23:5: error: unexpected token at start of statement\n    - **Necessary**: No, redundant with Block 1.\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:25:19: error: unexpected token in argument list\n    The redundant block is Block 3, which is identical to Block 1 and does not add any new information or necessary operations. This block can be eliminated.\n                  ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:27:5: error: invalid character in input\n    ```arm64\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:27:5: error: unexpected token at start of statement\n    ```arm64\n    ^\n/private/tmp/arm64golf-sandbox/run-0mrgmscm/candidate.s:35:5: error: too few operands for instruction\n    mov\n    ^~~"
       },
       {
         "count": 1,
@@ -135,10 +139,6 @@
       {
         "count": 1,
         "error": "/private/tmp/arm64golf-sandbox/run-3s3ho4w8/candidate.s:20:10: error: invalid operand for instruction\n    eors x0, x0, x3\n         ^\n/private/tmp/arm64golf-sandbox/run-3s3ho4w8/candidate.s:21:10: error: invalid operand for instruction\n    eors x1, x1, x4\n         ^\n/private/tmp/arm64golf-sandbox/run-3s3ho4w8/candidate.s:22:10: error: invalid operand for instruction\n    eors x2, x2, x7\n         ^"
-      },
-      {
-        "count": 1,
-        "error": "/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:7:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x4, x0, x1\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:9:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x0, x0, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:10:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x1, x1, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:13:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x4, x1, x2\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:15:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x1, x1, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:16:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x2, x2, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:19:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x4, x0, x1\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:21:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x0, x0, x4\n    ^\n/private/tmp/arm64golf-sandbox/run-60y0oe_z/candidate.s:22:5: error: unrecognized instruction mnemonic, did you mean: eor, eor3, orr?\n    eorr x1, x1, x4\n    ^"
       }
     ],
     "verified_evaluation_count": 111
