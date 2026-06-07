@@ -47,8 +47,21 @@ def sandbox_verify(problem_dir: Path, module, candidate, timeout_ms: int, memory
     return bool(sandbox_result(problem_dir, module, candidate, timeout_ms, memory_limit_mb).get("verified"))
 
 
-def require_pinned_attribution(model_id: str, provider_id: str, *, mock: bool, seed_only: bool) -> None:
+def require_pinned_attribution(
+    model_id: str,
+    provider_id: str,
+    *,
+    mock: bool,
+    seed_only: bool,
+    allow_marketplace: bool = False,
+) -> None:
     if mock or seed_only:
+        return
+    if allow_marketplace:
+        if not model_id:
+            raise SystemExit("live runs must include non-empty model attribution")
+        if not provider_id:
+            raise SystemExit("live runs must include non-empty provider attribution")
         return
     if model_id != DEFAULT_MODEL:
         raise SystemExit(f"live runs must use pinned model {DEFAULT_MODEL}; got {model_id}")
@@ -229,7 +242,13 @@ def run(args: argparse.Namespace) -> int:
     model_id = args.model
     provider_id = args.provider
     mock_responses = load_mock_responses(args.mock_response_file)
-    require_pinned_attribution(model_id, provider_id, mock=bool(mock_responses), seed_only=args.seed_only)
+    require_pinned_attribution(
+        model_id,
+        provider_id,
+        mock=bool(mock_responses),
+        seed_only=args.seed_only,
+        allow_marketplace=args.allow_marketplace_attribution,
+    )
     if mock_responses:
         args.template = "mock"
 
@@ -412,6 +431,14 @@ def main() -> int:
     parser.add_argument("--no-stop-on-verdict", dest="stop_on_verdict", action="store_false")
     parser.add_argument("--mock-response-file", default="")
     parser.add_argument("--seed-only", action="store_true")
+    parser.add_argument(
+        "--allow-marketplace-attribution",
+        action="store_true",
+        help=(
+            "Allow (model, provider) tuples other than the v0.1 pin. Required for Phase 4 marketplace "
+            "runs against air8gb/Llama-3.2-3B or future contributor models."
+        ),
+    )
     parser.set_defaults(stop_on_verdict=True)
     return run(parser.parse_args())
 

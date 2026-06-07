@@ -142,6 +142,33 @@ def validate() -> list[str]:
         )
         require(code != 0, "live run must reject non-pinned model attribution", errors)
         require("pinned model" in output, "non-pinned model rejection must name the pinned-model rule", errors)
+        code, output = run(
+            [
+                sys.executable,
+                "harness/loop.py",
+                "--rounds",
+                "0",
+                "--model",
+                "wrong-model",
+                "--provider",
+                "air8gb",
+                "--allow-marketplace-attribution",
+                "--api-key",
+                "dummy",
+                "--db",
+                str(root / "marketplace-model.sqlite"),
+                "--leaderboard-json",
+                str(root / "marketplace-model-leaderboard.json"),
+                "--private-key",
+                str(root / "marketplace-model" / "sign.key"),
+                "--public-key",
+                str(root / "marketplace-model" / "PUBKEY"),
+                "--receipts-dir",
+                str(root / "marketplace-model" / "receipts"),
+            ]
+        )
+        require(code == 0, f"marketplace attribution flag must accept non-pinned tuples: {output}", errors)
+        require("pinned model" not in output, "marketplace attribution flag must not emit pinned-model rejection", errors)
     return errors
 
 
