@@ -404,9 +404,16 @@ class _SSECompletionParser:
                 err = chunk.get("error")
                 if isinstance(err, dict):
                     _raise_in_band_error(err)
-            choice = chunk["choices"][0]
-            delta = choice.get("delta", {})
-            piece = delta.get("content")
+            # OpenAI SSE emits usage-only and other non-content chunks where
+            # `choices` is absent or empty (e.g. the final
+            # `{"choices":[],"usage":{...}}` token-accounting frame). Those
+            # are legitimate protocol frames, not malformed responses.
+            choices = chunk.get("choices") if isinstance(chunk, dict) else None
+            if not choices:
+                return
+            choice = choices[0]
+            delta = choice.get("delta", {}) if isinstance(choice, dict) else {}
+            piece = delta.get("content") if isinstance(delta, dict) else None
             if piece is None:
                 return
             if not isinstance(piece, str):
