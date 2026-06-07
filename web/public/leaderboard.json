@@ -1,36 +1,8 @@
 {
-  "attempt_count": 90,
-  "candidate_response_count": 328,
+  "attempt_count": 123,
+  "candidate_response_count": 463,
   "last_update": "2026-06-05T22:04:45Z",
   "pairs": [
-    {
-      "attribution_kind": "reference_harness",
-      "best_verified_score": null,
-      "evaluated_responses": 55,
-      "first_16_response": null,
-      "first_17_response": null,
-      "first_verified_response": null,
-      "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
-      "problem_id": "sort3-arm64",
-      "provider_id": "air5",
-      "template_id": "6a47271645dc99d5",
-      "template_name": "chain_of_thought",
-      "verified_count": 0
-    },
-    {
-      "attribution_kind": "reference_harness",
-      "best_verified_score": 12,
-      "evaluated_responses": 10,
-      "first_16_response": 10,
-      "first_17_response": 10,
-      "first_verified_response": 10,
-      "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
-      "problem_id": "sort3-arm64",
-      "provider_id": "air5",
-      "template_id": "4d2ff188063962c5",
-      "template_name": "csel_hint",
-      "verified_count": 1
-    },
     {
       "attribution_kind": "reference_harness",
       "best_verified_score": 12,
@@ -47,6 +19,34 @@
     },
     {
       "attribution_kind": "reference_harness",
+      "best_verified_score": 12,
+      "evaluated_responses": 46,
+      "first_16_response": 10,
+      "first_17_response": 10,
+      "first_verified_response": 10,
+      "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+      "problem_id": "sort3-arm64",
+      "provider_id": "air5",
+      "template_id": "4d2ff188063962c5",
+      "template_name": "csel_hint",
+      "verified_count": 36
+    },
+    {
+      "attribution_kind": "reference_harness",
+      "best_verified_score": 13,
+      "evaluated_responses": 95,
+      "first_16_response": 26,
+      "first_17_response": 26,
+      "first_verified_response": 26,
+      "model_id": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+      "problem_id": "sort3-arm64",
+      "provider_id": "air8gb",
+      "template_id": "c8c543c10e69293e",
+      "template_name": "no_failed_context",
+      "verified_count": 3
+    },
+    {
+      "attribution_kind": "reference_harness",
       "best_verified_score": 18,
       "evaluated_responses": 105,
       "first_16_response": null,
@@ -58,10 +58,38 @@
       "template_id": "c151c941de808a4f",
       "template_name": "failed_context",
       "verified_count": 54
+    },
+    {
+      "attribution_kind": "reference_harness",
+      "best_verified_score": null,
+      "evaluated_responses": 55,
+      "first_16_response": null,
+      "first_17_response": null,
+      "first_verified_response": null,
+      "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+      "problem_id": "sort3-arm64",
+      "provider_id": "air5",
+      "template_id": "6a47271645dc99d5",
+      "template_name": "chain_of_thought",
+      "verified_count": 0
+    },
+    {
+      "attribution_kind": "reference_harness",
+      "best_verified_score": null,
+      "evaluated_responses": 4,
+      "first_16_response": null,
+      "first_17_response": null,
+      "first_verified_response": null,
+      "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+      "problem_id": "sort3-arm64",
+      "provider_id": "air5",
+      "template_id": "c8c543c10e69293e",
+      "template_name": "no_failed_context",
+      "verified_count": 0
     }
   ],
   "problem_id": "sort3-arm64",
-  "requested_candidate_count": 720,
+  "requested_candidate_count": 984,
   "rows": [
     {
       "candidate_hash": "57b2aa2363428e955d361e45d4204a9c6bf9cf205fe32ec94d4ed4813ac5a2ff",
@@ -70,8 +98,8 @@
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
       "rank": 1,
-      "receipt_signature": "Mc1B4UDQsb63o02OKaXZ+dcpmj8RPUFU6/0hGnItlkpdfW8qPWwfkoDphetOAw51lLL7MjyfZSDvV68wT/YMDQ==",
-      "receipt_signature_short": "Mc1B4UDQsb63o02O",
+      "receipt_signature": "m4nXOI14pm6cMd3/jnjXOQ4dlg2KHg6R0vVxOQynHl893AZtPFIZwAzBCCtxHuRK0F3BLT2nGHuDCB1LkHtHCg==",
+      "receipt_signature_short": "m4nXOI14pm6cMd3/",
       "score": 12
     },
     {
@@ -86,14 +114,58 @@
       "score": 12
     },
     {
+      "candidate_hash": "055e012c82eeedc561f1f5158c1231bf27d342ca4171bff74b74525c32f83e52",
+      "candidate_hash_short": "055e012c82ee",
+      "discovered_at": "2026-06-07T10:40:55Z",
+      "model_id": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+      "provider_id": "air8gb",
+      "rank": 3,
+      "receipt_signature": "k46HtsTdFWqIB+ODNyMABrOudzvs/dNZOgr0LRYjcLo+7LJO1DTzyaZSL+xGu/5ns5ebV1NzAAin/I51aj3uDQ==",
+      "receipt_signature_short": "k46HtsTdFWqIB+OD",
+      "score": 13
+    },
+    {
+      "candidate_hash": "4a8e7be0e09b956f7e59df9714cd5d8ba921df52723759556c088fb0eafdade7",
+      "candidate_hash_short": "4a8e7be0e09b",
+      "discovered_at": "2026-06-07T10:51:36Z",
+      "model_id": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+      "provider_id": "air8gb",
+      "rank": 4,
+      "receipt_signature": "KBoGb8FanuO25mEuwejBP5IJvghCcJ6YbRDBZCaZIp0JNxFUqxe7iKJtWXcFutet8uD1Bmlfs+fYn9RfFcpGCw==",
+      "receipt_signature_short": "KBoGb8FanuO25mEu",
+      "score": 13
+    },
+    {
+      "candidate_hash": "3f846f0d857832b72baa415be5e96ceae52ad39ba9cf9baa6118b1f114981826",
+      "candidate_hash_short": "3f846f0d8578",
+      "discovered_at": "2026-06-07T10:45:36Z",
+      "model_id": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+      "provider_id": "air8gb",
+      "rank": 5,
+      "receipt_signature": "fxPFbO2GSWh974JQm0plgivxB/4L9+XbLabXzuwvc1nAt+I0svQx4ZrZ2XXvNG9urAUrFTafN9tLTC0MhHDlCg==",
+      "receipt_signature_short": "fxPFbO2GSWh974JQ",
+      "score": 15
+    },
+    {
       "candidate_hash": "9fa2d622fdae5341e92b2ff9eb3417db31cc5eb8c624f9ff96a318545289c6c1",
       "candidate_hash_short": "9fa2d622fdae",
       "discovered_at": "2026-06-05T22:32:03Z",
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
-      "rank": 3,
+      "rank": 6,
       "receipt_signature": "5uCmgY1/euLr0OSRZ/vehOrn7OMqWCxPVC70Kb90D/dgdS9Rvhy86gFHViwdcPPiGjTMBs+ykFB/w4Awk/x0BA==",
       "receipt_signature_short": "5uCmgY1/euLr0OSR",
+      "score": 16
+    },
+    {
+      "candidate_hash": "d4b664abf6f8c162d3312728c401d090ee21096be11899f2a9415e269c7e949e",
+      "candidate_hash_short": "d4b664abf6f8",
+      "discovered_at": "2026-06-07T11:14:55Z",
+      "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+      "provider_id": "air5",
+      "rank": 7,
+      "receipt_signature": "4INPP/Qhc40kU4aaj/6PvzVlNK/YkT1uCp/yEIBTyHMDLFtgA60k+G/Cjdfq9zMSAo/FXBNxgM1fnvliDPCrDw==",
+      "receipt_signature_short": "4INPP/Qhc40kU4aa",
       "score": 16
     },
     {
@@ -102,7 +174,7 @@
       "discovered_at": "2026-06-05T10:52:23Z",
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
-      "rank": 4,
+      "rank": 8,
       "receipt_signature": "PhQCRGHqQ5ctZ0yIl6HFLepN24njqF6EbX5wGnBunOlVvYcv1c06MLsI+AfpHw6RVb0oL5kRUPtlQHOR8+2fCg==",
       "receipt_signature_short": "PhQCRGHqQ5ctZ0yI",
       "score": 18
@@ -113,7 +185,7 @@
       "discovered_at": "2026-06-05T10:52:24Z",
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
-      "rank": 5,
+      "rank": 9,
       "receipt_signature": "XCwGrTvHIdpqbG79LZ2frdHd944fUlcp/NlXNisjaOeQyvCaI8Bv/eqZRdElU9JWFGh2SGdgt7afRkSeVdgSCQ==",
       "receipt_signature_short": "XCwGrTvHIdpqbG79",
       "score": 24
@@ -124,7 +196,7 @@
       "discovered_at": "2026-06-05T11:13:40Z",
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
-      "rank": 6,
+      "rank": 10,
       "receipt_signature": "iZr4PQctmwhnNwZMr3iZboe4QCsOFJlJDZzc1W2Ny/hk+IYvqageE7JB11KSYVGGssVzekDUeExMhw0poiwaAw==",
       "receipt_signature_short": "iZr4PQctmwhnNwZM",
       "score": 24
@@ -135,23 +207,23 @@
       "discovered_at": "2026-06-05T11:35:50Z",
       "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
       "provider_id": "air5",
-      "rank": 7,
+      "rank": 11,
       "receipt_signature": "X2BN3zC3KNvqgMZaj4ylBlPmfeQl7hRP4cOxRtl4YuY/Jh47pHxzE7lRSQtbpWsyAQ6LJa2TQzU5mRm95RvhDA==",
       "receipt_signature_short": "X2BN3zC3KNvqgMZa",
       "score": 24
     }
   ],
   "run_summary": {
-    "attempt_count": 90,
+    "attempt_count": 123,
     "best_verified_score": 12,
-    "candidate_response_count": 328,
-    "evaluation_count": 328,
-    "evaluation_error_count": 217,
-    "failed_evaluation_count": 217,
+    "candidate_response_count": 463,
+    "evaluation_count": 463,
+    "evaluation_error_count": 314,
+    "failed_evaluation_count": 314,
     "first_16_response": 115,
     "first_17_response": 115,
     "first_verified_response": 2,
-    "near_best_candidate_count": 2,
+    "near_best_candidate_count": 4,
     "near_best_structures": [
       {
         "candidate_count": 2,
@@ -173,18 +245,66 @@
         ],
         "representative_hash_short": "57b2aa236342",
         "representative_score": 12
+      },
+      {
+        "candidate_count": 1,
+        "fingerprint": "9c4694538e3581d1",
+        "instruction_count": 13,
+        "opcode_sequence": [
+          "cmp",
+          "csel",
+          "csel",
+          "mov",
+          "cmp",
+          "csel",
+          "csel",
+          "mov",
+          "cmp",
+          "csel",
+          "csel",
+          "mov",
+          "mov"
+        ],
+        "representative_hash_short": "4a8e7be0e09b",
+        "representative_score": 13
+      },
+      {
+        "candidate_count": 1,
+        "fingerprint": "c2616ae59a133658",
+        "instruction_count": 13,
+        "opcode_sequence": [
+          "cmp",
+          "csel",
+          "csel",
+          "mov",
+          "mov",
+          "cmp",
+          "csel",
+          "csel",
+          "mov",
+          "cmp",
+          "csel",
+          "csel",
+          "mov"
+        ],
+        "representative_hash_short": "055e012c82ee",
+        "representative_score": 13
       }
     ],
-    "near_best_unique_structure_count": 1,
-    "requested_candidate_count": 720,
+    "near_best_unique_structure_count": 3,
+    "requested_candidate_count": 984,
     "top_evaluation_errors": [
       {
-        "count": 100,
+        "count": 173,
         "error": "case 1 failed"
       },
       {
-        "count": 65,
+        "count": 84,
         "error": "case 2 failed"
+      },
+      {
+        "count": 4,
+        "error": "case 0 failed"
       },
       {
         "count": 1,
@@ -193,12 +313,8 @@
       {
         "count": 1,
         "error": "sandbox/candidate.s:7:5: error: unrecognized instruction mnemonic\n    teqz x3, x3\n    ^\nsandbox/candidate.s:15:5: error: unrecognized instruction mnemonic\n    teqz x3, x3\n    ^\nsandbox/candidate.s:23:5: error: unrecognized instruction mnemonic\n    teqz x3, x3\n    ^\nsandbox/candidate.s:8:10: error: directional label undefined\n    b.eq 1f\n         ^\nsandbox/candidate.s:16:10: error: directional label undefined\n    b.eq 2f\n         ^\nsandbox/candidate.s:24:10: error: directional label undefined\n    b.eq 3f\n         ^"
-      },
-      {
-        "count": 1,
-        "error": "sandbox/candidate.s:20:10: error: invalid operand for instruction\n    eors x0, x0, x3\n         ^\nsandbox/candidate.s:21:10: error: invalid operand for instruction\n    eors x1, x1, x4\n         ^\nsandbox/candidate.s:22:10: error: invalid operand for instruction\n    eors x2, x2, x7\n         ^"
       }
     ],
-    "verified_evaluation_count": 111
+    "verified_evaluation_count": 149
   }
 }
