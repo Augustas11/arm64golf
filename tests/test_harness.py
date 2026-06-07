@@ -1169,7 +1169,7 @@ def test_validate_web_rejects_static_air5_seed_overclaim(tmp_path: Path) -> None
     script = load_script("bin/validate-web.py")
     web_dir = tmp_path / "web"
     (web_dir / "public").mkdir(parents=True)
-    html = Path("web/index.html").read_text().replace("Seed baseline verified locally", "Powered by air5 + Qwen2.5-Coder-7B")
+    html = Path("web/index.html").read_text() + "<p>Powered by air5 + Qwen2.5-Coder-7B</p>"
     (web_dir / "index.html").write_text(html)
     (web_dir / "app.js").write_text(Path("web/app.js").read_text())
     (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
@@ -1177,6 +1177,23 @@ def test_validate_web_rejects_static_air5_seed_overclaim(tmp_path: Path) -> None
 
     errors = script.validate(web_dir)
     assert any("statically claim" in error for error in errors)
+
+
+def test_validate_web_rejects_internal_sandbox_path_in_leaderboard(tmp_path: Path) -> None:
+    script = load_script("bin/validate-web.py")
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    (web_dir / "index.html").write_text(Path("web/index.html").read_text())
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    payload = json.loads(Path("web/public/leaderboard.json").read_text())
+    payload.setdefault("run_summary", {}).setdefault("top_evaluation_errors", []).append(
+        {"error": "/private/tmp/arm64golf-sandbox/run-abc123/candidate.s:1:1: error: bad", "count": 1}
+    )
+    (web_dir / "public" / "leaderboard.json").write_text(json.dumps(payload))
+
+    errors = script.validate(web_dir)
+    assert any("sandbox host paths" in error for error in errors)
 
 
 def test_validate_receipts_accepts_current_leaderboard() -> None:

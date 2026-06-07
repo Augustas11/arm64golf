@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+
+
+_SANDBOX_PATH_RE = re.compile(r"/private/tmp/arm64golf-sandbox/run-[a-z0-9]+/")
+
+
+def _redact_sandbox_paths(text: str) -> str:
+    return _SANDBOX_PATH_RE.sub("sandbox/", text)
 
 
 SCHEMA = """
@@ -272,7 +280,7 @@ class Store:
             """,
             (problem_id, limit),
         )
-        return [{"error": row["error"], "count": int(row["count"])} for row in cur.fetchall()]
+        return [{"error": _redact_sandbox_paths(row["error"]), "count": int(row["count"])} for row in cur.fetchall()]
 
     def _eval_ordinal(self, problem_id: str, row: sqlite3.Row | None) -> int | None:
         if row is None:

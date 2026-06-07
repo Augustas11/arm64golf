@@ -3,90 +3,229 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>arm64golf leaderboard</title>
+    <title>arm64golf — can open-weight models match AlphaDev on ARM64?</title>
+    <meta
+      name="description"
+      content="A public benchmark for ARM64 instruction-count superoptimization by open-weight language models. Candidates are verified against a deterministic 1200-case test suite and bound to a signed receipt."
+    />
+    <meta property="og:title" content="arm64golf" />
+    <meta
+      property="og:description"
+      content="A public benchmark for ARM64 instruction-count superoptimization by open-weight language models. Verified candidates only."
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <a class="skip" href="#challenge">Skip to challenge</a>
+
     <header class="topbar">
-      <a class="brand" href="./">arm64golf</a>
+      <a class="brand" href="./">arm64golf<span class="brand-dot">.</span></a>
       <nav>
-        <a href="https://github.com/Augustas11/macprovider#for-providers">Join as Provider</a>
-        <a href="https://github.com/Augustas11/arm64golf/issues">Contestant Interest</a>
-        <a href="https://github.com/Augustas11/arm64golf">GitHub</a>
+        <a href="#how">How it works</a>
+        <a href="#challenge">Will you beat AlphaDev?</a>
+        <a href="#participate">Participate</a>
+        <a href="#frontier">Frontier Progress</a>
+        <a href="#leaderboard">Score history</a>
+        <a href="https://github.com/Augustas11/arm64golf" rel="noopener">GitHub</a>
       </nav>
     </header>
 
     <main>
-      <section class="status-banner" aria-label="test phase status">
-        Private test preview. Public launch, repository visibility, and DNS are deferred until operator approval.
+      <section class="status-banner" aria-label="phase status">
+        Private test preview. Public launch deferred until operator approval. Every score below is bound to a signed receipt under <code>receipts/PUBKEY</code>.
       </section>
 
-      <section class="overview">
-        <div>
-          <p class="eyebrow" id="attribution-line">Seed baseline verified locally</p>
-          <h1>Open-weight coding models on Apple Silicon search the ARM64 sort/hash frontier.</h1>
-          <p class="lede">
-            v0.1 starts with <code>sort3-arm64</code>: a receipt-backed search for shorter
-            ARM64 routines inspired by AlphaDev's x86 result.
-          </p>
-        </div>
-        <pre class="assembly" aria-label="current reference routine excerpt"><code>cmp   x0, x1
-csetm x3, gt
-eor   x4, x0, x1
-and   x4, x4, x3
-eor   x0, x0, x4
-eor   x1, x1, x4</code></pre>
+      <section class="hero">
+        <p class="eyebrow" id="attribution-line">A public benchmark for ARM64 instruction-count superoptimization.</p>
+        <h1>arm64golf — can open weights match AlphaDev on ARM?</h1>
+        <p class="lede">
+          In 2023, AlphaDev established a learned-search frontier for x86 sorting routines, reporting
+          <code>Sort3AlphaDev</code> at 17 instructions [Fawzi et al., <em>Nature</em> 618, 257–263]. No
+          equivalent public result exists for ARM64. arm64golf asks whether open-weight coding models,
+          served on consumer Apple Silicon via the
+          <a href="https://github.com/Augustas11/macprovider" rel="noopener">MacProvider</a> network, can
+          produce verifiable ARM64 routines shorter than published references. The metric is instruction
+          count over a deterministic 1200-case verifier. The unit of progress is a signed candidate.
+        </p>
+        <p class="hero-status">
+          Best verified ARM64 <code>sort3</code>: <strong>12 instructions</strong> — prompt-assisted, not a discovery-class result.
+          Live MacProvider catalog as of 2026-06-07: 1 provider, 1 model. The benchmark grows as the network does;
+          <a href="#participate">join as a provider or prompt contributor</a>.
+        </p>
       </section>
 
-      <section class="stats" aria-label="leaderboard summary">
-        <div>
-          <span>Current best</span>
-          <strong id="best-score">--</strong>
-          <small>instructions</small>
-        </div>
-        <div>
-          <span>Attempts</span>
-          <strong id="attempt-count">seed</strong>
-          <small id="candidate-response-count">0 candidate responses</small>
-        </div>
-        <div>
-          <span>Last update</span>
-          <strong id="last-update">--</strong>
-          <small>UTC</small>
-        </div>
+      <section class="how" id="how">
+        <h2>How it works</h2>
+        <p class="body">
+          The harness submits a prompt to an open-weight coding model through an OpenAI-compatible
+          endpoint pinned to a single MacProvider node. The v0.1 configuration is
+          <code>mlx-community/Qwen2.5-Coder-7B-Instruct-4bit</code> on provider <code>air5</code>. Each
+          model response is parsed for an ARM64 assembly block, assembled into a native binary, and
+          executed under a deny-by-default <code>sandbox-exec</code> profile against 1200 deterministic
+          test cases. Any failure rejects the candidate. A passing candidate is hashed, scored by static
+          instruction count after a normalization pass, and bound into an ed25519 receipt that commits
+          to <code>(problem_id, candidate_hash, score, model_id, provider_id, harness_version, timestamp)</code>.
+          The public score for a problem is the lowest verified instruction count on record.
+        </p>
+        <p class="body">
+          The receipt-signing key is operator-held and never sees model output. Anyone with
+          <code>receipts/PUBKEY</code> and the harness source can re-derive any score on the leaderboard
+          from the recorded receipt and the candidate bytes. The leaderboard is therefore a public log of
+          replayable claims, not a ranking of submissions.
+        </p>
       </section>
 
-      <section class="leaderboard" aria-labelledby="leaderboard-title">
-        <div class="section-heading">
-          <h2 id="leaderboard-title">Leaderboard</h2>
-          <p>Verified candidates only. Lower score wins.</p>
+      <section class="challenge" id="challenge">
+        <h2>Will you beat AlphaDev?</h2>
+        <p class="body">
+          AlphaDev's reported <code>Sort3AlphaDev</code> at 17 instructions targets x86. The instruction
+          set, register file, and conditional-execution primitives of ARM64 differ enough that the
+          comparable ARM64 frontier must be measured separately. The published baseline currently in the
+          harness, <code>726c3e4c49b5</code>, scores 18 instructions on ARM64.
+        </p>
+        <p class="body">
+          The open question is whether a coding model in the small open-weight class
+          (≤8B parameters, 4-bit quantized, served on consumer Apple Silicon) can produce a verifiable
+          ARM64 routine that improves on the published ARM64 baseline. A separate, stronger question is
+          whether such a routine improves on the AlphaDev x86 result when normalized for ISA. The
+          benchmark is open to any participant willing to point a provider node and a model at the
+          harness.
+        </p>
+      </section>
+
+      <section class="participate" id="participate">
+        <h2>Participate</h2>
+        <p class="body">
+          Two roles are open in the v0.1 preview. A third opens after public launch.
+        </p>
+
+        <dl class="roles">
+          <dt>Run a provider</dt>
+          <dd>
+            Operate an Apple Silicon Mac as an MLX inference endpoint on the MacProvider network. The
+            arm64golf harness, and other workloads, can pin to your node by provider identifier.
+            <a href="https://github.com/Augustas11/macprovider#for-providers" rel="noopener">Provider onboarding</a>.
+          </dd>
+
+          <dt>Register a contestant model</dt>
+          <dd>
+            Public contestant intake is closed in v0.1 to preserve attribution between prompt and model
+            during the calibration phase. Submit an interest issue specifying model, quantization, and
+            target provider for post-launch intake.
+            <a href="https://github.com/Augustas11/arm64golf/issues" rel="noopener">Contestant interest issue</a>.
+          </dd>
+
+          <dt>Propose a problem</dt>
+          <dd>
+            The pipeline is problem-agnostic. A candidate problem requires a deterministic verifier, a
+            published reference score, and a justification for instruction-count as the relevant metric.
+            <a href="https://github.com/Augustas11/arm64golf/issues/new" rel="noopener">Open a problem proposal</a>.
+          </dd>
+        </dl>
+      </section>
+
+      <section class="frontier" id="frontier">
+        <h2>Frontier Progress</h2>
+        <p class="body">
+          The frontier is reported per problem, per ISA, against the lowest verified instruction count on
+          record. For <code>sort3-arm64</code>, the published baseline is 18 instructions. The reference
+          comparator for the framing question is AlphaDev's x86 <code>Sort3AlphaDev</code> at 17.
+        </p>
+
+        <table class="frontier-table">
+          <thead>
+            <tr>
+              <th>Problem</th>
+              <th>ISA</th>
+              <th>Reference</th>
+              <th>Baseline in harness</th>
+              <th>Best verified</th>
+              <th>Verifier</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>sort3-arm64</code></td>
+              <td>ARM64</td>
+              <td>17 (AlphaDev, x86)</td>
+              <td>18 (<code>726c3e4c49b5</code>)</td>
+              <td id="best-cell">— (<code class="mono" id="best-hash">—</code>)</td>
+              <td>1200 deterministic cases</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p class="note">
+          <strong>Methodological note.</strong> The best verified ARM64 candidate at 12 instructions
+          (<code>57b2aa236342</code>) is produced by the model tiling the four-instruction
+          <code>cmp/csel/csel/mov</code> block supplied as a worked example in the <code>csel_hint</code>
+          prompt template. The receipt is valid against the 1200-case verifier. The structural credit is
+          shared between the prompt and the sampler. A discovery-class result requires either a verified
+          candidate below 12 from a template that does not contain the structure, or a verified candidate
+          with non-isomorphic structure. Neither has been observed across 223 post-canary evaluations on
+          the 7B configuration. Full record in
+          <a href="https://github.com/Augustas11/arm64golf/blob/main/REPORT.md" rel="noopener">REPORT.md</a>.
+        </p>
+      </section>
+
+      <section class="leaderboard" id="leaderboard" aria-labelledby="leaderboard-title">
+        <h2 id="leaderboard-title">Score history</h2>
+        <p class="body">
+          All verified candidates for <code>sort3-arm64</code>. Lower instruction count is better. The
+          receipt column is the first 16 base64 characters of the ed25519 signature; the full signature
+          is in <code>receipts/&lt;candidate_hash_short&gt;.json</code>.
+        </p>
+
+        <div class="stats">
+          <div>
+            <span class="kicker">Best verified</span>
+            <strong id="best-score">—</strong>
+            <small>instructions, ARM64</small>
+          </div>
+          <div>
+            <span class="kicker">Candidate responses</span>
+            <strong id="candidate-response-count">—</strong>
+            <small id="attempt-count">— evaluated</small>
+          </div>
+          <div>
+            <span class="kicker">Last promotion</span>
+            <strong id="last-update">—</strong>
+            <small>UTC</small>
+          </div>
         </div>
+
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Rank</th>
+                <th>#</th>
                 <th>Score</th>
-                <th>Candidate</th>
-                <th>Model + Provider</th>
+                <th>Candidate hash</th>
+                <th>Model</th>
+                <th>Provider</th>
                 <th>Receipt</th>
-                <th>Discovered</th>
+                <th>Discovered (UTC)</th>
               </tr>
             </thead>
             <tbody id="leaderboard-rows">
-              <tr><td colspan="6">Loading leaderboard...</td></tr>
+              <tr><td colspan="7">Loading…</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <section class="feed" aria-labelledby="feed-title">
-        <div class="section-heading">
-          <h2 id="feed-title">Recent Promotions</h2>
-          <p>Every promotion is backed by a deterministic verifier and ed25519 receipt.</p>
-        </div>
-        <ol id="promotion-feed"></ol>
-      </section>
+      <footer>
+        <p>A MacProvider research benchmark. Inference served by the MacProvider network on Apple Silicon. Verification and receipt issuance held by the operator.</p>
+        <p class="footer-links">
+          <a href="https://github.com/Augustas11/arm64golf" rel="noopener">Repository</a>
+          ·
+          <a href="https://github.com/Augustas11/arm64golf/blob/main/REPORT.md" rel="noopener">REPORT.md</a>
+          ·
+          <a href="https://github.com/Augustas11/arm64golf/blob/main/SPEC.md" rel="noopener">SPEC.md</a>
+          ·
+          <a href="https://github.com/Augustas11/macprovider#for-providers" rel="noopener">Provider onboarding</a>
+        </p>
+      </footer>
     </main>
 
     <script src="./app.js"></script>

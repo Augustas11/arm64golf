@@ -17,7 +17,6 @@ REQUIRED_HTML_IDS = {
     "attribution-line",
     "last-update",
     "leaderboard-rows",
-    "promotion-feed",
 }
 REQUIRED_ROW_FIELDS = {
     "rank",
@@ -88,10 +87,14 @@ def validate_html(web_dir: Path, errors: list[str]) -> None:
     parser.feed(text)
     missing_ids = sorted(REQUIRED_HTML_IDS - parser.ids)
     require(not missing_ids, f"web/index.html is missing required ids: {', '.join(missing_ids)}", errors)
-    require("Seed baseline verified locally" in text, "web/index.html must default to seed-baseline attribution", errors)
     require(
         "Powered by air5 + Qwen2.5-Coder-7B</p>" not in text,
         "web/index.html must not statically claim air5/Qwen attribution before live responses",
+        errors,
+    )
+    require(
+        "/private/tmp/arm64golf-sandbox" not in text,
+        "web/index.html must not embed internal sandbox host paths",
         errors,
     )
     require("./app.js" in parser.scripts, "web/index.html does not load ./app.js", errors)
@@ -122,6 +125,13 @@ def validate_leaderboard(web_dir: Path, errors: list[str]) -> None:
     if isinstance(summary, dict):
         missing_summary = sorted(REQUIRED_SUMMARY_FIELDS - set(summary))
         require(not missing_summary, f"run_summary missing fields: {', '.join(missing_summary)}", errors)
+        for entry in summary.get("top_evaluation_errors") or []:
+            text = entry.get("error", "") if isinstance(entry, dict) else ""
+            require(
+                "/private/tmp/arm64golf-sandbox" not in text,
+                "run_summary.top_evaluation_errors must not leak internal sandbox host paths",
+                errors,
+            )
 
     rows = payload.get("rows")
     if isinstance(rows, list):
