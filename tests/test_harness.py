@@ -300,6 +300,28 @@ def test_parse_stream_response_accumulates_single_choice() -> None:
     assert parse_stream_response(raw) == ["cmp x0, x1\nret\n"]
 
 
+def test_parse_stream_response_handles_openai_role_and_usage_frames() -> None:
+    # Real-world MacProvider/OpenAI shape: leading role-only delta with empty
+    # content, content delta, stop delta, then a usage-only frame with
+    # `choices: []`. The usage frame is a legitimate protocol frame and must
+    # not be classified as malformed_response.
+    raw = "\n".join(
+        [
+            'data: {"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}',
+            "",
+            'data: {"choices":[{"index":0,"delta":{"content":"cmp x0, x1"},"finish_reason":null}]}',
+            "",
+            'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+            "",
+            'data: {"choices":[],"usage":{"total_tokens":35,"prompt_tokens":34,"completion_tokens":1}}',
+            "",
+            "data: [DONE]",
+            "",
+        ]
+    )
+    assert parse_stream_response(raw) == ["cmp x0, x1"]
+
+
 def test_parse_stream_response_reassembles_multiline_sse_event() -> None:
     raw = "\n".join(
         [
