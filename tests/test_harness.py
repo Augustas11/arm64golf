@@ -15,7 +15,7 @@ import pytest
 from harness.attest import sign_receipt, verify_receipt
 from harness import attest as attest_module
 from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID
-from harness.loop import main as loop_main
+from harness.loop import main as loop_main, require_pinned_attribution
 from harness.prompts import template_id
 from harness.inference import (
     BurstThrottledError,
@@ -1352,6 +1352,35 @@ def test_live_loop_rejects_model_override_before_inference(tmp_path: Path, monke
     )
     with pytest.raises(SystemExit, match="pinned model"):
         loop_main()
+
+
+def test_require_pinned_attribution_allows_marketplace_when_flag_set() -> None:
+    require_pinned_attribution(
+        model_id="some-other-model",
+        provider_id="air8gb",
+        mock=False,
+        seed_only=False,
+        allow_marketplace=True,
+    )
+
+
+def test_require_pinned_attribution_still_requires_non_empty_in_marketplace_mode() -> None:
+    with pytest.raises(SystemExit, match="non-empty model"):
+        require_pinned_attribution(
+            model_id="",
+            provider_id="air8gb",
+            mock=False,
+            seed_only=False,
+            allow_marketplace=True,
+        )
+    with pytest.raises(SystemExit, match="non-empty provider"):
+        require_pinned_attribution(
+            model_id="some-other-model",
+            provider_id="",
+            mock=False,
+            seed_only=False,
+            allow_marketplace=True,
+        )
 
 
 def test_mock_response_loop_honors_max_candidate_responses(tmp_path: Path, monkeypatch) -> None:

@@ -251,8 +251,9 @@ The model is pinned to:
 mlx-community/Qwen2.5-Coder-7B-Instruct-4bit
 ```
 
-The harness must not silently switch to another model. Incorrect model
-attribution poisons the leaderboard.
+The harness must not silently switch to another model. Incorrect model attribution poisons the leaderboard.
+
+Phase 4 marketplace runs use `--allow-marketplace-attribution` to opt in to non-v0.1 `(provider, model)` pairs; the gate still requires both fields, records the pair verbatim in receipts and `pairs[]`, and keeps reference-harness attribution (`pairs[].attribution_kind: "reference_harness"`; receipt kind: `"reference-harness"`).
 
 ### 4.3 Provider Pin
 
@@ -262,11 +263,8 @@ The provider is pinned through:
 X-MacProvider-Provider: air5
 ```
 
-The sibling MacProvider legacy provider file currently uses `m4` as the
-provider key for the M4 Mac endpoint. `arm64golf` uses `air5` as the intended
-public attribution string unless the operator handoff proves that the live
-coordinator requires a different provider id. If the live id differs, document
-the mapping in `AIR5_OPERATOR_NOTE.md` and receipts before running the search.
+The sibling MacProvider legacy provider file currently uses `m4` as the provider key for the M4 Mac endpoint. `arm64golf` uses `air5` as the intended public attribution string unless the operator handoff proves that the live coordinator requires a different provider id.
+If the live id differs, document the mapping in `AIR5_OPERATOR_NOTE.md` and receipts before running the search.
 
 ### 4.4 Request Shape
 
