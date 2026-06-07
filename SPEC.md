@@ -468,8 +468,18 @@ deterministic JSON with sorted keys and compact separators:
 
 ```json
 {
+  "attestation": {
+    "kind": "reference-harness",
+    "details": {
+      "template_id": "4d2ff188063962c5",
+      "template_name": "csel_hint",
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "n": 8
+    }
+  },
   "candidate_hash": "sha256...",
-  "harness_version": "0.1.0",
+  "harness_version": "0.2.0",
   "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
   "problem_id": "sort3-arm64",
   "provider_id": "air5",
@@ -497,6 +507,48 @@ explicit provider id, hash-bound artifact, timestamp, short public display
 prefixes, and a signature verified independently of the database.
 
 The implementation is clean-room. It must not import MacProvider Go code.
+
+### 7.5 Attestation
+
+Receipt payload v2 adds an `attestation` object for producer metadata while
+keeping v1 identity, score, timestamp, and signature semantics intact. Its
+shape is:
+
+```json
+{
+  "kind": "reference-harness",
+  "details": {}
+}
+```
+
+`kind` is a stable string discriminator. `details` is a kind-specific object.
+Known v2 kinds:
+
+- `seed-baseline`: receipt emitted for the local reference baseline.
+  `details` MUST be `{}`.
+- `reference-harness`: receipt emitted from a model-derived run through the
+  closed reference harness. `details` MUST contain `template_id`,
+  `template_name`, `temperature`, `top_p`, and `n`.
+- `legacy-v1-unknown`: upgraded v1 receipt whose original producer provenance
+  is no longer authoritatively known. It is not a seed baseline and not a fully
+  attested reference-harness run. `details` MUST be `{}`.
+- `mock`: receipt emitted from `--mock-response-file` offline smoke input.
+  `details` MUST be `{}`.
+
+Verifiers MUST accept unknown `kind` values in the signed payload when
+`details` is a JSON object. This keeps the v2 receipt format forward-compatible
+with Stage C and other future producer classes. Stage C will introduce
+`kind: "open-submission"` in a future PR; the receipt format does not change.
+Stage C may add stricter validation for that kind.
+
+For every kind, the canonical JSON form of `details` encoded as UTF-8 MUST be
+no more than 4096 bytes. This preserves forward-compatible unknown kinds while
+keeping receipt signing and verification bounded.
+
+For `reference-harness`, `template_id` is the 16-hex sha256 prefix of the
+template body. The `chain_of_thought` template is a special case: its
+`template_id` hashes `COT_SYSTEM_PROMPT` concatenated with the template body
+because that template changes both system and user prompt content.
 
 ## 8. Leaderboard Schema
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from hashlib import sha256
@@ -11,16 +12,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from harness.attest import sign_receipt
+from harness.attest import canonical_json, sign_receipt
 from harness.inference import DEFAULT_MODEL, DEFAULT_PROVIDER, InferenceConfig, InferenceError, MacProviderClient
 from harness.module import load_problem_module
-from harness.prompts import build_prompt, extract_assembly
+from harness.prompts import ABLATION_TEMPLATES, build_prompt, extract_assembly, template_id
 from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID, Store
 from harness.verdict import is_search_terminal
 from sandbox.runner import run_candidate as run_sandboxed_candidate
 
 
-HARNESS_VERSION = "0.1.0"
+HARNESS_VERSION = "0.2.0"
+ATTESTATION_FIELDS = ("kind", "details")
+REFERENCE_ATTESTATION_DETAIL_FIELDS = ("template_id", "template_name", "temperature", "top_p", "n")
+EMPTY_DETAILS_ATTESTATION_KINDS = frozenset({"seed-baseline", "legacy-v1-unknown", "mock"})
 
 
 def utc_now() -> str:
@@ -56,8 +60,103 @@ def fallback_candidate_hash(response: str) -> str:
     return sha256(response.encode("utf-8")).hexdigest()
 
 
-def receipt_payload(candidate, score: int, model_id: str, provider_id: str) -> dict[str, object]:
+def seed_attestation() -> dict[str, object]:
+    return {"kind": "seed-baseline", "details": {}}
+
+
+def legacy_v1_unknown_attestation() -> dict[str, object]:
+    return {"kind": "legacy-v1-unknown", "details": {}}
+
+
+def mock_attestation() -> dict[str, object]:
+    return {"kind": "mock", "details": {}}
+
+
+def reference_attestation(template_name: str, temperature: float, top_p: float, n: int) -> dict[str, object]:
+    validate_reference_attestation_inputs(template_name, temperature, top_p, n)
     return {
+        "kind": "reference-harness",
+        "details": {
+            "template_id": template_id(template_name),
+            "template_name": template_name,
+            "temperature": temperature,
+            "top_p": top_p,
+            "n": n,
+        },
+    }
+
+
+def validate_reference_attestation_inputs(template_name: str, temperature: float, top_p: float, n: int) -> None:
+    if template_name not in ABLATION_TEMPLATES:
+        raise ValueError(f"unknown template_name: {template_name!r}")
+    if not isinstance(temperature, float) or isinstance(temperature, bool) or not 0.0 <= temperature <= 2.0:
+        raise ValueError("temperature must be a float in [0.0, 2.0]")
+    if not isinstance(top_p, float) or isinstance(top_p, bool) or not 0.0 < top_p <= 1.0:
+        raise ValueError("top_p must be a float in (0.0, 1.0]")
+    if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= 64:
+        raise ValueError("n must be an int in [1, 64]")
+
+
+def validate_attestation(attestation: object) -> None:
+    if not isinstance(attestation, dict):
+        raise ValueError("attestation must be an object")
+    if set(attestation.keys()) != set(ATTESTATION_FIELDS):
+        raise ValueError(f"attestation fields must be {ATTESTATION_FIELDS}")
+    kind = attestation["kind"]
+    details = attestation["details"]
+    if not isinstance(kind, str) or not kind:
+        raise ValueError("attestation kind must be a non-empty string")
+    if not isinstance(details, dict):
+        raise ValueError("attestation details must be an object")
+    if kind in EMPTY_DETAILS_ATTESTATION_KINDS:
+        if details:
+            raise ValueError(f"{kind} attestation details must be empty")
+        validate_attestation_details_size(details)
+        return
+    if kind == "reference-harness":
+        validate_reference_attestation_details(details)
+        validate_attestation_details_size(details)
+        return
+    try:
+        validate_attestation_details_size(details)
+    except TypeError as exc:
+        raise ValueError("unknown attestation details must be JSON-serializable") from exc
+
+
+def validate_attestation_details_size(details: dict[str, object]) -> None:
+    details_size = len(canonical_json(details))
+    if details_size > 4096:
+        raise ValueError("attestation.details exceeds 4096-byte cap")
+
+
+def validate_reference_attestation_details(details: dict[str, object]) -> None:
+    if set(details.keys()) != set(REFERENCE_ATTESTATION_DETAIL_FIELDS):
+        raise ValueError(f"reference-harness details fields must be {REFERENCE_ATTESTATION_DETAIL_FIELDS}")
+    template_name = details["template_name"]
+    template_id_value = details["template_id"]
+    temperature = details["temperature"]
+    top_p = details["top_p"]
+    n = details["n"]
+    if not isinstance(template_name, str):
+        raise ValueError("reference-harness template_name must be a string")
+    validate_reference_attestation_inputs(template_name, temperature, top_p, n)  # type: ignore[arg-type]
+    if not isinstance(template_id_value, str):
+        raise ValueError("reference-harness template_id must be a string")
+    expected_template_id = template_id(template_name)
+    if template_id_value != expected_template_id:
+        raise ValueError(f"reference-harness template_id must be {expected_template_id}")
+
+
+def receipt_payload(
+    candidate,
+    score: int,
+    model_id: str,
+    provider_id: str,
+    attestation: dict[str, object],
+) -> dict[str, object]:
+    validate_attestation(attestation)
+    return {
+        "attestation": attestation,
         "problem_id": candidate.problem_id,
         "candidate_hash": candidate.candidate_hash,
         "score": score,
@@ -68,8 +167,16 @@ def receipt_payload(candidate, score: int, model_id: str, provider_id: str) -> d
     }
 
 
-def sign_and_record_receipt(store: Store, args: argparse.Namespace, candidate, score: int, model_id: str, provider_id: str) -> None:
-    payload = receipt_payload(candidate, score, model_id, provider_id)
+def sign_and_record_receipt(
+    store: Store,
+    args: argparse.Namespace,
+    candidate,
+    score: int,
+    model_id: str,
+    provider_id: str,
+    attestation: dict[str, object],
+) -> None:
+    payload = receipt_payload(candidate, score, model_id, provider_id, attestation)
     receipt = sign_receipt(payload, Path(args.private_key), Path(args.public_key), Path(args.receipts_dir))
     store.record_receipt(candidate.candidate_hash, receipt.path, receipt.signature)
 
@@ -110,7 +217,7 @@ def seed_baseline(
         provider_id=SEED_PROVIDER_ID,
     )
     if verified:
-        sign_and_record_receipt(store, args, candidate, count, SEED_MODEL_ID, SEED_PROVIDER_ID)
+        sign_and_record_receipt(store, args, candidate, count, SEED_MODEL_ID, SEED_PROVIDER_ID, seed_attestation())
 
 
 def run(args: argparse.Namespace) -> int:
@@ -242,7 +349,17 @@ def run(args: argparse.Namespace) -> int:
                 error=error,
             )
             if verified and candidate is not None:
-                sign_and_record_receipt(store, args, candidate, score, receipt_model_id, receipt_provider_id)
+                sign_and_record_receipt(
+                    store,
+                    args,
+                    candidate,
+                    score,
+                    receipt_model_id,
+                    receipt_provider_id,
+                    mock_attestation()
+                    if mock_responses
+                    else reference_attestation(args.template, args.temperature, args.top_p, args.n),
+                )
         store.export_leaderboard(module.PROBLEM_ID, Path(args.leaderboard_json))
         if args.stop_on_verdict and is_search_terminal(store.run_summary(module.PROBLEM_ID)):
             break

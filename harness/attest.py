@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import json
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,8 +69,43 @@ def sign_receipt(payload: dict[str, object], private_path: Path, public_path: Pa
         "signature": signature_b64,
         "public_key": public_path.read_text().strip(),
     }
-    path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+    atomic_write_text(path, json.dumps(envelope, indent=2, sort_keys=True) + "\n")
     return Receipt(path=path, signature=signature_b64)
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+    tmp_path = Path(tmp_name)
+    replaced = False
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+            tmp_file.write(content)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        os.replace(tmp_path, path)
+        replaced = True
+        fsync_directory(path.parent)
+    finally:
+        if not replaced:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def fsync_directory(path: Path) -> None:
+    if os.name != "posix":
+        return
+    try:
+        fd = os.open(str(path), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 def verify_receipt(path: Path) -> bool:
