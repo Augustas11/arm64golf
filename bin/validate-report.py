@@ -51,13 +51,15 @@ def validate() -> list[str]:
 
     problem_id = payload.get("problem_id")
     summary = payload.get("run_summary")
+    pairs = payload.get("pairs")
     require(problem_id == "sort3-arm64", "leaderboard problem_id must be sort3-arm64", errors)
     require(isinstance(summary, dict), "leaderboard run_summary must be an object", errors)
+    require(isinstance(pairs, list), "leaderboard pairs must be a list", errors)
     if not isinstance(summary, dict):
         return errors
 
     try:
-        rendered = load_write_report_module().render_report(problem_id, summary)
+        rendered = load_write_report_module().render_report(problem_id, summary, pairs if isinstance(pairs, list) else [])
     except Exception as exc:  # noqa: BLE001 - validator should surface render failures as data.
         return [f"REPORT.md render failed: {exc}"]
 

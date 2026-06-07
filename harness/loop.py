@@ -217,7 +217,9 @@ def seed_baseline(
         provider_id=SEED_PROVIDER_ID,
     )
     if verified:
-        sign_and_record_receipt(store, args, candidate, count, SEED_MODEL_ID, SEED_PROVIDER_ID, seed_attestation())
+        row = store.candidate(candidate.problem_id, candidate.candidate_hash)
+        if row is None or (row["model_id"] == SEED_MODEL_ID and row["provider_id"] == SEED_PROVIDER_ID):
+            sign_and_record_receipt(store, args, candidate, count, SEED_MODEL_ID, SEED_PROVIDER_ID, seed_attestation())
 
 
 def run(args: argparse.Namespace) -> int:
@@ -228,6 +230,8 @@ def run(args: argparse.Namespace) -> int:
     provider_id = args.provider
     mock_responses = load_mock_responses(args.mock_response_file)
     require_pinned_attribution(model_id, provider_id, mock=bool(mock_responses), seed_only=args.seed_only)
+    if mock_responses:
+        args.template = "mock"
 
     seed_baseline(store, args, problem_dir, module, args.timeout_ms, args.memory_limit_mb)
 
@@ -250,10 +254,6 @@ def run(args: argparse.Namespace) -> int:
             break
         request_n = min(args.n, remaining) if remaining is not None else args.n
 
-        best = store.best_candidate(module.PROBLEM_ID)
-        current_source = best["source"] if best else module.baseline()[1]
-        current_count = int(best["score"]) if best else module.baseline()[0]
-        messages = build_prompt(current_source, current_count, args.template)
         if mock_responses:
             responses = mock_responses[:request_n]
             attempt_id = store.record_attempt(
@@ -264,6 +264,10 @@ def run(args: argparse.Namespace) -> int:
                 response_count=len(responses),
             )
         else:
+            best = store.best_candidate(module.PROBLEM_ID)
+            current_source = best["source"] if best else module.baseline()[1]
+            current_count = int(best["score"]) if best else module.baseline()[0]
+            messages = build_prompt(current_source, current_count, args.template)
             client = MacProviderClient(
                 api_key,
                 InferenceConfig(

@@ -16,6 +16,7 @@ from harness.attest import sign_receipt, verify_receipt
 from harness import attest as attest_module
 from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID
 from harness.loop import main as loop_main
+from harness.prompts import template_id
 from harness.inference import (
     BurstThrottledError,
     InferenceConfig,
@@ -52,6 +53,35 @@ def _repeating_clock(values: list[float]):
         return last_seen
 
     return now
+
+
+def _record_pair_evaluation(
+    store: Store,
+    *,
+    attempt_id: int,
+    candidate_hash: str,
+    score: int,
+    verified: bool,
+    model_id: str = "model-a",
+    provider_id: str = "air5",
+    problem_id: str = "sort3-arm64",
+) -> None:
+    store.record_candidate(
+        candidate_hash=candidate_hash,
+        problem_id=problem_id,
+        source=f"cmp x0, x1\n// {candidate_hash}\n",
+        score=score,
+        verified=verified,
+        model_id=model_id,
+        provider_id=provider_id,
+    )
+    store.record_evaluation(
+        attempt_id=attempt_id,
+        problem_id=problem_id,
+        candidate_hash=candidate_hash,
+        score=score,
+        verified=verified,
+    )
 
 
 def test_load_sort3_module_and_verify_baseline() -> None:
@@ -642,7 +672,7 @@ def test_store_exports_leaderboard(tmp_path: Path) -> None:
         model_id="model",
         provider_id="air5",
     )
-    store.record_attempt("sort3-arm64", "template", "ok", requested_n=8, response_count=6)
+    store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=8, response_count=6)
     store.record_evaluation(
         attempt_id=1,
         problem_id="sort3-arm64",
@@ -665,6 +695,222 @@ def test_store_exports_leaderboard(tmp_path: Path) -> None:
     assert payload["rows"][0]["rank"] == 1
     assert payload["rows"][0]["score"] == 17
     assert payload["rows"][0]["receipt_signature"] == "signature"
+    assert "pairs" in payload
+    assert payload["pairs"][0]["problem_id"] == "sort3-arm64"
+    assert payload["pairs"][0]["attribution_kind"] == "reference_harness"
+    assert payload["pairs"][0]["template_id"] == template_id("no_failed_context")
+    store.close()
+
+
+def test_store_run_pairs_empty_ledger_returns_empty_list(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    assert store.run_pairs("sort3-arm64") == []
+    store.close()
+
+
+def test_store_export_leaderboard_includes_empty_pairs_key(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    out = tmp_path / "leaderboard.json"
+    store.export_leaderboard("sort3-arm64", out)
+    assert json.loads(out.read_text())["pairs"] == []
+    store.close()
+
+
+def test_store_run_pairs_summarizes_one_attempt(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    attempt_id = store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=3, response_count=3)
+    _record_pair_evaluation(store, attempt_id=attempt_id, candidate_hash="hash-a", score=99, verified=False)
+    _record_pair_evaluation(store, attempt_id=attempt_id, candidate_hash="hash-b", score=18, verified=True)
+    _record_pair_evaluation(store, attempt_id=attempt_id, candidate_hash="hash-c", score=17, verified=True)
+
+    assert store.run_pairs("sort3-arm64") == [
+        {
+            "problem_id": "sort3-arm64",
+            "provider_id": "air5",
+            "model_id": "model-a",
+            "template_name": "no_failed_context",
+            "template_id": template_id("no_failed_context"),
+            "attribution_kind": "reference_harness",
+            "evaluated_responses": 3,
+            "verified_count": 2,
+            "best_verified_score": 17,
+            "first_verified_response": 2,
+            "first_17_response": 3,
+            "first_16_response": None,
+        }
+    ]
+    store.close()
+
+
+def test_store_run_pairs_aggregates_attempts_for_same_pair(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    first_attempt = store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=1, response_count=1)
+    second_attempt = store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=2, response_count=2)
+    _record_pair_evaluation(store, attempt_id=first_attempt, candidate_hash="hash-a", score=18, verified=True)
+    _record_pair_evaluation(store, attempt_id=second_attempt, candidate_hash="hash-b", score=99, verified=False)
+    _record_pair_evaluation(store, attempt_id=second_attempt, candidate_hash="hash-c", score=16, verified=True)
+
+    pairs = store.run_pairs("sort3-arm64")
+    assert len(pairs) == 1
+    assert pairs[0]["evaluated_responses"] == 3
+    assert pairs[0]["verified_count"] == 2
+    assert pairs[0]["best_verified_score"] == 16
+    assert pairs[0]["first_verified_response"] == 1
+    assert pairs[0]["first_17_response"] == 3
+    assert pairs[0]["first_16_response"] == 3
+    store.close()
+
+
+def test_store_run_pairs_separates_templates(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    no_context = store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=1, response_count=1)
+    failed_context = store.record_attempt("sort3-arm64", "failed_context", "ok", requested_n=1, response_count=1)
+    _record_pair_evaluation(store, attempt_id=no_context, candidate_hash="hash-a", score=18, verified=True)
+    _record_pair_evaluation(store, attempt_id=failed_context, candidate_hash="hash-b", score=17, verified=True)
+
+    pairs = store.run_pairs("sort3-arm64")
+    assert [pair["template_name"] for pair in pairs] == ["failed_context", "no_failed_context"]
+    assert {pair["template_id"] for pair in pairs} == {template_id("failed_context"), template_id("no_failed_context")}
+    store.close()
+
+
+def test_store_run_pairs_separates_provider_model_pairs(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    first_attempt = store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=1, response_count=1)
+    second_attempt = store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=1, response_count=1)
+    _record_pair_evaluation(
+        store,
+        attempt_id=first_attempt,
+        candidate_hash="hash-a",
+        score=18,
+        verified=True,
+        model_id="model-a",
+        provider_id="air5",
+    )
+    _record_pair_evaluation(
+        store,
+        attempt_id=second_attempt,
+        candidate_hash="hash-b",
+        score=17,
+        verified=True,
+        model_id="model-b",
+        provider_id="air6",
+    )
+
+    pairs = store.run_pairs("sort3-arm64")
+    assert [(pair["provider_id"], pair["model_id"]) for pair in pairs] == [("air6", "model-b"), ("air5", "model-a")]
+    store.close()
+
+
+def test_store_run_pairs_threshold_ordinals_stay_null_without_threshold_hit(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    attempt_id = store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=2, response_count=2)
+    _record_pair_evaluation(store, attempt_id=attempt_id, candidate_hash="hash-a", score=18, verified=True)
+    _record_pair_evaluation(store, attempt_id=attempt_id, candidate_hash="hash-b", score=19, verified=True)
+
+    pair = store.run_pairs("sort3-arm64")[0]
+    assert pair["first_verified_response"] == 1
+    assert pair["first_17_response"] is None
+    assert pair["first_16_response"] is None
+    store.close()
+
+
+def test_store_run_pairs_excludes_seed_baseline_attempt(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    seed_attempt = store.record_attempt("sort3-arm64", "seed-baseline", "ok", requested_n=1, response_count=1)
+    reference_attempt = store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=1, response_count=1)
+    live_attempt = store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=1, response_count=1)
+    _record_pair_evaluation(
+        store,
+        attempt_id=seed_attempt,
+        candidate_hash="seed-hash-a",
+        score=18,
+        verified=True,
+        model_id=SEED_MODEL_ID,
+        provider_id=SEED_PROVIDER_ID,
+    )
+    _record_pair_evaluation(
+        store,
+        attempt_id=reference_attempt,
+        candidate_hash="seed-hash-b",
+        score=18,
+        verified=True,
+        model_id=SEED_MODEL_ID,
+        provider_id=SEED_PROVIDER_ID,
+    )
+    _record_pair_evaluation(store, attempt_id=live_attempt, candidate_hash="live-hash", score=17, verified=True)
+
+    pairs = store.run_pairs("sort3-arm64")
+    assert len(pairs) == 1
+    assert pairs[0]["provider_id"] == "air5"
+    assert pairs[0]["evaluated_responses"] == 1
+    store.close()
+
+
+def test_store_run_pairs_excludes_seed_baseline_when_it_is_the_only_attempt(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    seed_attempt = store.record_attempt("sort3-arm64", "seed-baseline", "ok", requested_n=1, response_count=1)
+    _record_pair_evaluation(
+        store,
+        attempt_id=seed_attempt,
+        candidate_hash="seed-hash",
+        score=18,
+        verified=True,
+        model_id=SEED_MODEL_ID,
+        provider_id=SEED_PROVIDER_ID,
+    )
+
+    assert store.run_pairs("sort3-arm64") == []
+    store.close()
+
+
+def test_store_run_pairs_keeps_open_submission_without_template(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    attempt_id = store.record_attempt("sort3-arm64", None, "ok", requested_n=1, response_count=1)
+    _record_pair_evaluation(store, attempt_id=attempt_id, candidate_hash="open-hash", score=15, verified=True)
+    receipt_path = tmp_path / "open.json"
+    receipt_path.write_text(json.dumps({"payload": {"attestation": {"kind": "open-submission", "details": {}}}}))
+    store.record_receipt("open-hash", receipt_path, "signature")
+
+    assert store.run_pairs("sort3-arm64") == [
+        {
+            "problem_id": "sort3-arm64",
+            "provider_id": "air5",
+            "model_id": "model-a",
+            "template_name": None,
+            "template_id": None,
+            "attribution_kind": "open_submission",
+            "evaluated_responses": 1,
+            "verified_count": 1,
+            "best_verified_score": 15,
+            "first_verified_response": 1,
+            "first_17_response": 1,
+            "first_16_response": 1,
+        }
+    ]
+    store.close()
+
+
+def test_store_export_leaderboard_caps_pairs_and_marks_truncated(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    for index in range(257):
+        attempt_id = store.record_attempt("sort3-arm64", "no_failed_context", "ok", requested_n=1, response_count=1)
+        _record_pair_evaluation(
+            store,
+            attempt_id=attempt_id,
+            candidate_hash=f"hash-{index}",
+            score=index,
+            verified=True,
+            provider_id=f"air{index:03d}",
+        )
+    out = tmp_path / "leaderboard.json"
+    store.export_leaderboard("sort3-arm64", out)
+    payload = json.loads(out.read_text())
+
+    assert len(payload["pairs"]) == 256
+    assert payload["pairs_truncated"] is True
+    assert [pair["best_verified_score"] for pair in payload["pairs"][:3]] == [0, 1, 2]
+    assert payload["pairs"][-1]["best_verified_score"] == 255
     store.close()
 
 
@@ -911,6 +1157,50 @@ def test_seed_only_loop_exports_receipt_backed_leaderboard(tmp_path: Path, monke
     assert list(receipts_dir.glob("*.json"))
 
 
+def test_seed_only_loop_preserves_promoted_live_receipt(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "leaderboard.json"
+    db_path = tmp_path / "db.sqlite"
+    receipts_dir = tmp_path / "receipts"
+    receipts_dir.mkdir()
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    count, source = module.baseline()
+    candidate = module.load(source)
+    store = Store(db_path)
+    store.record_candidate(
+        candidate_hash=candidate.candidate_hash,
+        problem_id=candidate.problem_id,
+        source=candidate.normalized_source,
+        score=count,
+        verified=True,
+        model_id="mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+        provider_id="air5",
+    )
+    store.record_receipt(candidate.candidate_hash, receipts_dir / "live.json", "live-signature")
+    store.close()
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "loop.py",
+            "--seed-only",
+            "--db",
+            str(db_path),
+            "--leaderboard-json",
+            str(out),
+            "--private-key",
+            str(tmp_path / "data" / "sign.key"),
+            "--public-key",
+            str(receipts_dir / "PUBKEY"),
+            "--receipts-dir",
+            str(receipts_dir),
+        ],
+    )
+    assert loop_main() == 0
+    payload = json.loads(out.read_text())
+    assert payload["rows"][0]["model_id"] == "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
+    assert payload["rows"][0]["provider_id"] == "air5"
+    assert payload["rows"][0]["receipt_signature"] == "live-signature"
+
+
 def test_mock_response_loop_exports_attempt_and_receipt(tmp_path: Path, monkeypatch) -> None:
     out = tmp_path / "leaderboard.json"
     receipts_dir = tmp_path / "receipts"
@@ -949,6 +1239,9 @@ def test_mock_response_loop_exports_attempt_and_receipt(tmp_path: Path, monkeypa
     assert payload["rows"][0]["receipt_signature"]
     assert payload["rows"][0]["model_id"] == "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
     assert payload["rows"][0]["provider_id"] == "air5"
+    assert payload["pairs"][0]["attribution_kind"] == "mock"
+    assert payload["pairs"][0]["template_name"] is None
+    assert payload["pairs"][0]["template_id"] is None
     receipt = json.loads((receipts_dir / f"{payload['rows'][0]['candidate_hash_short']}.json").read_text())
     assert receipt["payload"]["attestation"] == {"kind": "mock", "details": {}}
 
@@ -1215,6 +1508,41 @@ def test_summarize_run_reports_pending_without_responses(tmp_path: Path) -> None
     summary = store.run_summary("sort3-arm64")
     store.close()
     assert script.verdict(summary) == "PENDING"
+
+
+def test_summarize_run_renders_per_pair_progress_sorted() -> None:
+    script = load_script("bin/summarize-run.py")
+    lines = script.render_pairs(
+        [
+            {
+                "provider_id": "air5",
+                "model_id": "model",
+                "template_name": "slow",
+                "template_id": "slow-id",
+                "evaluated_responses": 1,
+                "verified_count": 0,
+                "best_verified_score": None,
+                "first_verified_response": None,
+                "first_17_response": None,
+                "first_16_response": None,
+            },
+            {
+                "provider_id": "air5",
+                "model_id": "model",
+                "template_name": "fast",
+                "template_id": "fast-id",
+                "evaluated_responses": 2,
+                "verified_count": 1,
+                "best_verified_score": 16,
+                "first_verified_response": 1,
+                "first_17_response": 1,
+                "first_16_response": 1,
+            },
+        ]
+    )
+    assert lines[0] == "## Per-Pair Progress"
+    assert "fast" in lines[4]
+    assert "slow" in lines[5]
 
 
 def test_write_report_renders_pending_state(tmp_path: Path) -> None:
@@ -1615,6 +1943,114 @@ def test_validate_web_rejects_incomplete_leaderboard_row(tmp_path: Path) -> None
 
     errors = script.validate(web_dir)
     assert any("receipt_signature" in error for error in errors)
+
+
+def test_validate_web_rejects_leaderboard_missing_pairs(tmp_path: Path) -> None:
+    script = load_script("bin/validate-web.py")
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    (web_dir / "index.html").write_text(Path("web/index.html").read_text())
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    payload = json.loads(Path("web/public/leaderboard.json").read_text())
+    del payload["pairs"]
+    (web_dir / "public" / "leaderboard.json").write_text(json.dumps(payload))
+
+    errors = script.validate(web_dir)
+    assert any("top-level field pairs" in error for error in errors)
+
+
+def test_validate_web_rejects_pair_missing_template_id(tmp_path: Path) -> None:
+    script = load_script("bin/validate-web.py")
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    (web_dir / "index.html").write_text(Path("web/index.html").read_text())
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    payload = json.loads(Path("web/public/leaderboard.json").read_text())
+    payload["pairs"] = [
+        {
+            "problem_id": "sort3-arm64",
+            "provider_id": "air5",
+            "model_id": "model",
+            "template_name": "no_failed_context",
+            "template_id": template_id("no_failed_context"),
+            "attribution_kind": "reference_harness",
+            "evaluated_responses": 1,
+            "verified_count": 1,
+            "best_verified_score": 18,
+            "first_verified_response": 1,
+            "first_17_response": None,
+            "first_16_response": None,
+        }
+    ]
+    del payload["pairs"][0]["template_id"]
+    (web_dir / "public" / "leaderboard.json").write_text(json.dumps(payload))
+
+    errors = script.validate(web_dir)
+    assert any("pair 1 missing fields: template_id" in error for error in errors)
+
+
+def test_validate_web_accepts_open_submission_pair_without_template(tmp_path: Path) -> None:
+    script = load_script("bin/validate-web.py")
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    (web_dir / "index.html").write_text(Path("web/index.html").read_text())
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    payload = json.loads(Path("web/public/leaderboard.json").read_text())
+    payload["pairs"] = [
+        {
+            "problem_id": "sort3-arm64",
+            "provider_id": "air5",
+            "model_id": "model",
+            "template_name": None,
+            "template_id": None,
+            "attribution_kind": "open_submission",
+            "evaluated_responses": 1,
+            "verified_count": 1,
+            "best_verified_score": 18,
+            "first_verified_response": 1,
+            "first_17_response": None,
+            "first_16_response": None,
+        }
+    ]
+    payload["pairs_truncated"] = False
+    (web_dir / "public" / "leaderboard.json").write_text(json.dumps(payload))
+
+    assert script.validate(web_dir) == []
+
+
+def test_validate_web_rejects_reference_pair_without_template(tmp_path: Path) -> None:
+    script = load_script("bin/validate-web.py")
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    (web_dir / "index.html").write_text(Path("web/index.html").read_text())
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    payload = json.loads(Path("web/public/leaderboard.json").read_text())
+    payload["pairs"] = [
+        {
+            "problem_id": "sort3-arm64",
+            "provider_id": "air5",
+            "model_id": "model",
+            "template_name": None,
+            "template_id": None,
+            "attribution_kind": "reference_harness",
+            "evaluated_responses": 1,
+            "verified_count": 1,
+            "best_verified_score": 18,
+            "first_verified_response": 1,
+            "first_17_response": None,
+            "first_16_response": None,
+        }
+    ]
+    payload["pairs_truncated"] = "false"
+    (web_dir / "public" / "leaderboard.json").write_text(json.dumps(payload))
+
+    errors = script.validate(web_dir)
+    assert any("template_name is required" in error for error in errors)
+    assert any("pairs_truncated must be a bool" in error for error in errors)
 
 
 def test_validate_web_rejects_static_air5_seed_overclaim(tmp_path: Path) -> None:

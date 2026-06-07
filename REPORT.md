@@ -23,6 +23,15 @@ Current derived verdict: PASS-C.
 - near-best verified candidates: 2
 - near-best unique opcode structures: 1
 
+## Per-Pair Progress
+
+| provider | model | template | template_id | evaluated | verified | best verified | first verified | first <=17 | first <=16 |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| air5 | mlx-community/Qwen2.5-Coder-7B-Instruct-4bit | chain_of_thought | 6a47271645dc99d5 | 55 | 0 | none | none | none | none |
+| air5 | mlx-community/Qwen2.5-Coder-7B-Instruct-4bit | csel_hint | 4d2ff188063962c5 | 10 | 1 | 12 | 10 | 10 | 10 |
+| air5 | mlx-community/Qwen2.5-Coder-7B-Instruct-4bit | dual_example | 5d776fd84945be27 | 158 | 56 | 12 | 3 | 3 | 3 |
+| air5 | mlx-community/Qwen2.5-Coder-7B-Instruct-4bit | failed_context | c151c941de808a4f | 105 | 54 | 18 | 2 | none | none |
+
 ## Structural Diversity Evidence
 
 - `f13bac4e5383f523`: 2 candidate(s), representative `57b2aa236342`, score 12, 12 instructions: `cmp csel csel mov cmp csel csel mov cmp csel csel mov`

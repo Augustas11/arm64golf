@@ -7,6 +7,9 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from harness.attest import atomic_write_text
+from harness.prompts import template_id
+
 
 _SANDBOX_PATH_RE = re.compile(r"/private/tmp/arm64golf-sandbox/run-[a-z0-9]+/")
 
@@ -30,7 +33,7 @@ CREATE TABLE IF NOT EXISTS candidates (
 CREATE TABLE IF NOT EXISTS attempts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     problem_id TEXT NOT NULL,
-    template TEXT NOT NULL,
+    template TEXT,
     status TEXT NOT NULL,
     error TEXT NOT NULL DEFAULT '',
     requested_n INTEGER NOT NULL DEFAULT 0,
@@ -59,6 +62,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
 
 SEED_MODEL_ID = "reference-baseline"
 SEED_PROVIDER_ID = "local-harness"
+MAX_LEADERBOARD_PAIRS = 256
 
 
 def instruction_mnemonics(source: str) -> list[str]:
@@ -92,11 +96,41 @@ class Store:
         self.db.commit()
 
     def _migrate(self) -> None:
-        columns = {row["name"] for row in self.db.execute("PRAGMA table_info(attempts)")}
+        column_rows = self.db.execute("PRAGMA table_info(attempts)").fetchall()
+        columns = {row["name"] for row in column_rows}
         if "requested_n" not in columns:
             self.db.execute("ALTER TABLE attempts ADD COLUMN requested_n INTEGER NOT NULL DEFAULT 0")
         if "response_count" not in columns:
             self.db.execute("ALTER TABLE attempts ADD COLUMN response_count INTEGER NOT NULL DEFAULT 0")
+        refreshed_columns = self.db.execute("PRAGMA table_info(attempts)").fetchall()
+        template_column = next((row for row in refreshed_columns if row["name"] == "template"), None)
+        if template_column is not None and int(template_column["notnull"]) == 1:
+            self._rebuild_attempts_with_nullable_template()
+
+    def _rebuild_attempts_with_nullable_template(self) -> None:
+        self.db.execute("ALTER TABLE attempts RENAME TO attempts_old")
+        self.db.execute(
+            """
+            CREATE TABLE attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                problem_id TEXT NOT NULL,
+                template TEXT,
+                status TEXT NOT NULL,
+                error TEXT NOT NULL DEFAULT '',
+                requested_n INTEGER NOT NULL DEFAULT 0,
+                response_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            )
+            """
+        )
+        self.db.execute(
+            """
+            INSERT INTO attempts (id, problem_id, template, status, error, requested_n, response_count, created_at)
+            SELECT id, problem_id, template, status, error, requested_n, response_count, created_at
+            FROM attempts_old
+            """
+        )
+        self.db.execute("DROP TABLE attempts_old")
 
     def close(self) -> None:
         self.db.close()
@@ -104,7 +138,7 @@ class Store:
     def record_attempt(
         self,
         problem_id: str,
-        template: str,
+        template: str | None,
         status: str,
         error: str = "",
         requested_n: int = 0,
@@ -395,15 +429,154 @@ class Store:
             )
         return rows
 
+    def _receipt_attestation_kind(self, receipt_path: object) -> str | None:
+        if not receipt_path:
+            return None
+        try:
+            envelope = json.loads(Path(str(receipt_path)).read_text())
+        except (OSError, json.JSONDecodeError):
+            return None
+        payload = envelope.get("payload")
+        if not isinstance(payload, dict):
+            return None
+        attestation = payload.get("attestation")
+        if not isinstance(attestation, dict):
+            return None
+        kind = attestation.get("kind")
+        return kind if isinstance(kind, str) else None
+
+    def _pair_attribution_kind(self, template_name: str | None, receipt_path: object) -> str:
+        if template_name == "mock":
+            return "mock"
+        if self._receipt_attestation_kind(receipt_path) == "open-submission":
+            return "open_submission"
+        return "reference_harness"
+
+    @staticmethod
+    def _sort_pairs(pairs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sorted(
+            pairs,
+            key=lambda pair: (
+                pair["best_verified_score"] is None,
+                pair["best_verified_score"] if pair["best_verified_score"] is not None else 0,
+                -int(pair["evaluated_responses"]),
+                str(pair["provider_id"]),
+                "" if pair["template_name"] is None else str(pair["template_name"]),
+                str(pair["model_id"]),
+            ),
+        )
+
+    def _run_pairs_with_truncation(self, problem_id: str) -> tuple[list[dict[str, Any]], bool]:
+        cur = self.db.execute(
+            """
+            SELECT
+                e.id AS evaluation_id,
+                e.score AS evaluation_score,
+                e.verified AS evaluation_verified,
+                a.template AS template_name,
+                c.provider_id AS provider_id,
+                c.model_id AS model_id,
+                r.receipt_path AS receipt_path
+            FROM evaluations e
+            JOIN attempts a ON a.id = e.attempt_id
+            JOIN candidates c ON c.candidate_hash = e.candidate_hash
+                AND c.problem_id = e.problem_id
+            LEFT JOIN receipts r ON r.candidate_hash = c.candidate_hash
+            WHERE e.problem_id = ?
+                AND a.problem_id = ?
+                -- Exclude seed rows using both durable seed signals. Older
+                -- ledgers may have recorded a seed attempt; current seed-only
+                -- exports keep the seed as reference-baseline attribution.
+                AND (a.template IS NULL OR a.template != 'seed-baseline')
+                AND c.model_id != ?
+            ORDER BY
+                c.provider_id ASC,
+                c.model_id ASC,
+                a.template ASC,
+                e.id ASC
+            """,
+            (problem_id, problem_id, SEED_MODEL_ID),
+        )
+
+        groups: dict[tuple[str, str, str, str | None, str], dict[str, Any]] = {}
+        for row in cur.fetchall():
+            raw_template_name = row["template_name"]
+            template_name = str(raw_template_name) if raw_template_name is not None else None
+            attribution_kind = self._pair_attribution_kind(template_name, row["receipt_path"])
+            if attribution_kind == "reference_harness":
+                if template_name is None:
+                    continue
+                try:
+                    current_template_id: str | None = template_id(template_name)
+                except (KeyError, ValueError):
+                    continue
+                output_template_name = template_name
+            else:
+                current_template_id = None
+                output_template_name = None
+
+            key = (
+                problem_id,
+                str(row["provider_id"]),
+                str(row["model_id"]),
+                current_template_id,
+                attribution_kind,
+            )
+            pair = groups.get(key)
+            if pair is None:
+                pair = {
+                    "problem_id": key[0],
+                    "provider_id": key[1],
+                    "model_id": key[2],
+                    "template_name": output_template_name,
+                    "template_id": key[3],
+                    "attribution_kind": key[4],
+                    "evaluated_responses": 0,
+                    "verified_count": 0,
+                    "best_verified_score": None,
+                    "first_verified_response": None,
+                    "first_17_response": None,
+                    "first_16_response": None,
+                }
+                groups[key] = pair
+
+            pair["evaluated_responses"] += 1
+            ordinal = int(pair["evaluated_responses"])
+            verified = int(row["evaluation_verified"]) == 1
+            score = int(row["evaluation_score"])
+            if not verified:
+                continue
+
+            pair["verified_count"] += 1
+            best = pair["best_verified_score"]
+            pair["best_verified_score"] = score if best is None else min(int(best), score)
+            if pair["first_verified_response"] is None:
+                pair["first_verified_response"] = ordinal
+            if score <= 17 and pair["first_17_response"] is None:
+                pair["first_17_response"] = ordinal
+            if score <= 16 and pair["first_16_response"] is None:
+                pair["first_16_response"] = ordinal
+
+        ordered = self._sort_pairs(list(groups.values()))
+        return ordered[:MAX_LEADERBOARD_PAIRS], len(ordered) > MAX_LEADERBOARD_PAIRS
+
+    def run_pairs(self, problem_id: str) -> list[dict[str, Any]]:
+        pairs, _truncated = self._run_pairs_with_truncation(problem_id)
+        return pairs
+
     def export_leaderboard(self, problem_id: str, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         rows = self.leaderboard(problem_id)
         stats = self.attempt_stats(problem_id)
+        pairs, pairs_truncated = self._run_pairs_with_truncation(problem_id)
         payload = {
             "problem_id": problem_id,
             **stats,
             "run_summary": self.run_summary(problem_id),
             "last_update": rows[0]["discovered_at"] if rows else "",
+            "pairs": pairs,
             "rows": rows,
         }
-        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        if pairs_truncated:
+            payload["pairs_truncated"] = True
+        atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
