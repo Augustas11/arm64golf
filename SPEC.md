@@ -541,6 +541,10 @@ with Stage C and other future producer classes. Stage C will introduce
 `kind: "open-submission"` in a future PR; the receipt format does not change.
 Stage C may add stricter validation for that kind.
 
+For every kind, the canonical JSON form of `details` encoded as UTF-8 MUST be
+no more than 4096 bytes. This preserves forward-compatible unknown kinds while
+keeping receipt signing and verification bounded.
+
 For `reference-harness`, `template_id` is the 16-hex sha256 prefix of the
 template body. The `chain_of_thought` template is a special case: its
 `template_id` hashes `COT_SYSTEM_PROMPT` concatenated with the template body

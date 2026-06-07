@@ -4,12 +4,16 @@ import io
 import json
 import importlib
 import importlib.util
+import subprocess
+import sys
+import threading
 from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
 from harness.attest import sign_receipt, verify_receipt
+from harness import attest as attest_module
 from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID
 from harness.loop import main as loop_main
 from harness.inference import (
@@ -812,6 +816,67 @@ def test_receipt_signing_reuses_existing_valid_receipt(tmp_path: Path) -> None:
     assert changed["payload"]["score"] == 17
 
 
+def test_atomic_write_text_uses_unique_temp_paths_for_simultaneous_writers(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "receipt.json"
+    contents = ["first receipt\n", "second receipt\n"]
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+    tmp_names: list[str] = []
+    tmp_names_lock = threading.Lock()
+    original_replace = attest_module.os.replace
+
+    def synchronized_replace(src, dst):
+        with tmp_names_lock:
+            tmp_names.append(Path(src).name)
+        barrier.wait(timeout=5)
+        original_replace(src, dst)
+
+    def write_content(content: str) -> None:
+        try:
+            attest_module.atomic_write_text(target, content)
+        except BaseException as exc:  # noqa: BLE001 - thread failures must be asserted in the parent.
+            errors.append(exc)
+
+    monkeypatch.setattr(attest_module.os, "replace", synchronized_replace)
+    threads = [threading.Thread(target=write_content, args=(content,)) for content in contents]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert target.read_text() in contents
+    assert len(tmp_names) == 2
+    assert len(set(tmp_names)) == 2
+    assert list(tmp_path.glob("receipt.json.*.tmp")) == []
+
+
+def test_receipt_signing_preserves_existing_receipt_when_replace_fails(tmp_path: Path, monkeypatch) -> None:
+    payload = {
+        "problem_id": "sort3-arm64",
+        "candidate_hash": "abc123",
+        "score": 18,
+        "model_id": "model",
+        "provider_id": "air5",
+        "harness_version": "0.1.0",
+        "ts": "2026-06-05T00:00:00Z",
+    }
+    receipt = sign_receipt(payload, tmp_path / "sign.key", tmp_path / "PUBKEY", tmp_path / "receipts")
+    original = receipt.path.read_bytes()
+
+    def fail_replace(src, dst):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(attest_module.os, "replace", fail_replace)
+    changed_payload = {**payload, "score": 17, "ts": "2026-06-05T00:00:01Z"}
+    with pytest.raises(OSError, match="simulated replace failure"):
+        sign_receipt(changed_payload, tmp_path / "sign.key", tmp_path / "PUBKEY", tmp_path / "receipts")
+
+    assert list(receipt.path.parent.glob(f"{receipt.path.name}.*.tmp")) == []
+    assert receipt.path.read_bytes() == original
+    assert verify_receipt(receipt.path)
+
+
 def test_seed_only_loop_exports_receipt_backed_leaderboard(tmp_path: Path, monkeypatch) -> None:
     out = tmp_path / "leaderboard.json"
     receipts_dir = tmp_path / "receipts"
@@ -1599,6 +1664,92 @@ def test_validate_receipts_rejects_row_score_mismatch(tmp_path: Path) -> None:
     assert any("score" in error for error in errors)
 
 
+def test_validate_receipts_rejects_bad_known_attestation_shape(tmp_path: Path) -> None:
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    count, source = module.baseline()
+    candidate = module.load(source)
+    receipts = tmp_path / "receipts"
+    payload = {
+        "attestation": {"kind": "mock", "details": {"not": "empty"}},
+        "candidate_hash": candidate.candidate_hash,
+        "harness_version": "0.2.0",
+        "model_id": SEED_MODEL_ID,
+        "problem_id": candidate.problem_id,
+        "provider_id": SEED_PROVIDER_ID,
+        "score": count,
+        "ts": "2026-06-05T00:00:00Z",
+    }
+    receipt = sign_receipt(payload, tmp_path / "sign.key", receipts / "PUBKEY", receipts)
+    envelope = json.loads(receipt.path.read_text())
+    leaderboard = tmp_path / "leaderboard.json"
+    leaderboard.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {
+                        "candidate_hash": candidate.candidate_hash,
+                        "score": count,
+                        "model_id": SEED_MODEL_ID,
+                        "provider_id": SEED_PROVIDER_ID,
+                        "receipt_signature": envelope["signature"],
+                    }
+                ]
+            }
+        )
+    )
+
+    script = load_script("bin/validate-receipts.py")
+    errors = script.validate(leaderboard, receipts)
+    assert any("mock attestation details must be empty" in error for error in errors)
+
+
+def test_validate_receipts_rejects_reference_attestation_missing_fields(tmp_path: Path) -> None:
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    count, source = module.baseline()
+    candidate = module.load(source)
+    receipts = tmp_path / "receipts"
+    payload = {
+        "attestation": {
+            "kind": "reference-harness",
+            "details": {
+                "template_name": "csel_hint",
+                "temperature": 0.7,
+                "top_p": 0.95,
+                "n": 8,
+            },
+        },
+        "candidate_hash": candidate.candidate_hash,
+        "harness_version": "0.2.0",
+        "model_id": SEED_MODEL_ID,
+        "problem_id": candidate.problem_id,
+        "provider_id": SEED_PROVIDER_ID,
+        "score": count,
+        "ts": "2026-06-05T00:00:00Z",
+    }
+    receipt = sign_receipt(payload, tmp_path / "sign.key", receipts / "PUBKEY", receipts)
+    envelope = json.loads(receipt.path.read_text())
+    leaderboard = tmp_path / "leaderboard.json"
+    leaderboard.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {
+                        "candidate_hash": candidate.candidate_hash,
+                        "score": count,
+                        "model_id": SEED_MODEL_ID,
+                        "provider_id": SEED_PROVIDER_ID,
+                        "receipt_signature": envelope["signature"],
+                    }
+                ]
+            }
+        )
+    )
+
+    script = load_script("bin/validate-receipts.py")
+    errors = script.validate(leaderboard, receipts)
+    assert any("reference-harness details fields" in error for error in errors)
+
+
 def test_template_id_is_deterministic_and_body_hash_based() -> None:
     from harness.prompts import ABLATION_TEMPLATES, template_id
 
@@ -1703,6 +1854,18 @@ def test_validate_attestation_rejects_bad_known_or_unserializable_shapes() -> No
         validate_attestation({"kind": "open-submission", "details": {"bad": {1, 2}}})
 
 
+def test_validate_attestation_enforces_details_size_cap() -> None:
+    from harness.attest import canonical_json
+    from harness.loop import validate_attestation
+
+    empty_blob_size = len(canonical_json({"blob": ""}))
+    boundary_blob = "x" * (4096 - empty_blob_size)
+    validate_attestation({"kind": "open-submission", "details": {"blob": boundary_blob}})
+
+    with pytest.raises(ValueError, match="attestation.details exceeds 4096-byte cap"):
+        validate_attestation({"kind": "open-submission", "details": {"blob": boundary_blob + "x"}})
+
+
 def test_sign_and_verify_v2_seed_baseline_receipt(tmp_path: Path) -> None:
     from harness.loop import receipt_payload, seed_attestation
 
@@ -1745,7 +1908,7 @@ def test_verify_receipt_accepts_v1_payload(tmp_path: Path) -> None:
     assert verify_receipt(receipt.path)
 
 
-def test_validate_receipts_accepts_v1_payload(tmp_path: Path) -> None:
+def test_validate_receipts_rejects_v1_payload_without_attestation(tmp_path: Path) -> None:
     module = load_problem_module(Path("problems/sort3-arm64"))
     count, source = module.baseline()
     candidate = module.load(source)
@@ -1781,7 +1944,8 @@ def test_validate_receipts_accepts_v1_payload(tmp_path: Path) -> None:
     )
 
     validate_script = load_script("bin/validate-receipts.py")
-    assert validate_script.validate(leaderboard, receipts) == []
+    errors = validate_script.validate(leaderboard, receipts)
+    assert any("attestation must be an object" in error for error in errors)
 
 
 def test_upgrade_receipts_to_v2_updates_v1_in_place_and_validator_accepts(tmp_path: Path) -> None:
@@ -1866,6 +2030,96 @@ def test_upgrade_receipts_to_v2_classifies_non_seed_legacy_as_unknown(tmp_path: 
     envelope = json.loads(receipt.path.read_text())
     assert envelope["payload"]["ts"] == payload["ts"]
     assert envelope["payload"]["attestation"] == {"kind": "legacy-v1-unknown", "details": {}}
+
+
+def test_upgrade_receipts_to_v2_refuses_malformed_attestation_without_rewriting(tmp_path: Path) -> None:
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    count, source = module.baseline()
+    candidate = module.load(source)
+    receipts = tmp_path / "receipts"
+    private_key = tmp_path / "data" / "sign.key"
+    public_key = receipts / "PUBKEY"
+    payload = {
+        "attestation": {"kind": "mock", "details": {"not": "empty"}},
+        "candidate_hash": candidate.candidate_hash,
+        "harness_version": "0.1.0",
+        "model_id": SEED_MODEL_ID,
+        "problem_id": candidate.problem_id,
+        "provider_id": SEED_PROVIDER_ID,
+        "score": count,
+        "ts": "2026-06-05T00:00:00Z",
+    }
+    receipt = sign_receipt(payload, private_key, public_key, receipts)
+    original = receipt.path.read_text()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "bin/upgrade-receipts-to-v2.py",
+            "--receipts-dir",
+            str(receipts),
+            "--private-key",
+            str(private_key),
+            "--public-key",
+            str(public_key),
+            "--db",
+            str(tmp_path / "missing.sqlite"),
+        ],
+        check=False,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "attestation invalid" in result.stdout
+    assert "mock attestation details must be empty" in result.stdout
+    assert receipt.path.read_text() == original
+
+
+def test_upgrade_receipts_to_v2_refuses_malformed_seed_attestation_without_rewriting(tmp_path: Path) -> None:
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    count, source = module.baseline()
+    candidate = module.load(source)
+    receipts = tmp_path / "receipts"
+    private_key = tmp_path / "data" / "sign.key"
+    public_key = receipts / "PUBKEY"
+    payload = {
+        "attestation": {"kind": "seed-baseline", "details": {"leftover": "data"}},
+        "candidate_hash": candidate.candidate_hash,
+        "harness_version": "0.2.0",
+        "model_id": SEED_MODEL_ID,
+        "problem_id": candidate.problem_id,
+        "provider_id": SEED_PROVIDER_ID,
+        "score": count,
+        "ts": "2026-06-05T00:00:00Z",
+    }
+    receipt = sign_receipt(payload, private_key, public_key, receipts)
+    original = receipt.path.read_text()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "bin/upgrade-receipts-to-v2.py",
+            "--receipts-dir",
+            str(receipts),
+            "--private-key",
+            str(private_key),
+            "--public-key",
+            str(public_key),
+            "--db",
+            str(tmp_path / "missing.sqlite"),
+        ],
+        check=False,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "attestation invalid" in result.stdout
+    assert "seed-baseline attestation details must be empty" in result.stdout
+    assert receipt.path.read_text() == original
 
 
 def test_upgrade_receipts_to_v2_rejects_loose_private_key_permissions(tmp_path: Path) -> None:

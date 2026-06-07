@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from harness.attest import sign_receipt
+from harness.attest import canonical_json, sign_receipt
 from harness.inference import DEFAULT_MODEL, DEFAULT_PROVIDER, InferenceConfig, InferenceError, MacProviderClient
 from harness.module import load_problem_module
 from harness.prompts import ABLATION_TEMPLATES, build_prompt, extract_assembly, template_id
@@ -97,7 +97,9 @@ def validate_reference_attestation_inputs(template_name: str, temperature: float
         raise ValueError("n must be an int in [1, 64]")
 
 
-def validate_attestation(attestation: dict[str, object]) -> None:
+def validate_attestation(attestation: object) -> None:
+    if not isinstance(attestation, dict):
+        raise ValueError("attestation must be an object")
     if set(attestation.keys()) != set(ATTESTATION_FIELDS):
         raise ValueError(f"attestation fields must be {ATTESTATION_FIELDS}")
     kind = attestation["kind"]
@@ -109,14 +111,22 @@ def validate_attestation(attestation: dict[str, object]) -> None:
     if kind in EMPTY_DETAILS_ATTESTATION_KINDS:
         if details:
             raise ValueError(f"{kind} attestation details must be empty")
+        validate_attestation_details_size(details)
         return
     if kind == "reference-harness":
         validate_reference_attestation_details(details)
+        validate_attestation_details_size(details)
         return
     try:
-        json.dumps(details, sort_keys=True)
+        validate_attestation_details_size(details)
     except TypeError as exc:
         raise ValueError("unknown attestation details must be JSON-serializable") from exc
+
+
+def validate_attestation_details_size(details: dict[str, object]) -> None:
+    details_size = len(canonical_json(details))
+    if details_size > 4096:
+        raise ValueError("attestation.details exceeds 4096-byte cap")
 
 
 def validate_reference_attestation_details(details: dict[str, object]) -> None:

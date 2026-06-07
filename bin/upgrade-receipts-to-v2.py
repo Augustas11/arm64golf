@@ -15,7 +15,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from harness.attest import sign_receipt
-from harness.loop import HARNESS_VERSION, legacy_v1_unknown_attestation, reference_attestation, seed_attestation
+from harness.loop import (
+    HARNESS_VERSION,
+    legacy_v1_unknown_attestation,
+    reference_attestation,
+    seed_attestation,
+    validate_attestation,
+)
 
 
 SEED_BASELINE_CANDIDATE_HASH = "726c3e4c49b564d0d9ed5613da861ba72c6107951a48939bb932a1d338076040"
@@ -105,15 +111,32 @@ def normalized_attestation(payload: dict[str, Any], known_hashes: set[str]) -> d
     return legacy_attestation(candidate_hash, known_hashes)
 
 
+def validate_input_v2_attestation(path: Path, payload: dict[str, Any]) -> None:
+    attestation = payload.get("attestation")
+    if not isinstance(attestation, dict):
+        return
+    if "kind" not in attestation or "details" not in attestation:
+        return
+    try:
+        validate_attestation(attestation)
+    except ValueError as exc:
+        raise ValueError(f"{path} attestation invalid: {exc}") from exc
+
+
 def upgrade_receipt(path: Path, private_key: Path, public_key: Path, receipts_dir: Path, known_hashes: set[str]) -> str:
     envelope = load_json(path)
     payload = envelope.get("payload")
     if not isinstance(payload, dict):
         raise ValueError("payload must be an object")
 
+    validate_input_v2_attestation(path, payload)
     upgraded = dict(payload)
     upgraded["attestation"] = normalized_attestation(payload, known_hashes)
     upgraded["harness_version"] = HARNESS_VERSION
+    try:
+        validate_attestation(upgraded["attestation"])
+    except ValueError as exc:
+        raise ValueError(f"{path} attestation invalid: {exc}") from exc
     if upgraded == payload:
         return "kept_v2"
 

@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from harness.attest import verify_receipt
+from harness.loop import validate_attestation
 
 
 COMPARE_FIELDS = {
@@ -56,6 +57,11 @@ def validate_receipt_for_row(row: dict[str, Any], receipts_dir: Path) -> list[st
     payload = envelope.get("payload")
     if not isinstance(payload, dict):
         return [f"{receipt_path} payload must be an object"]
+
+    try:
+        validate_attestation(payload.get("attestation"))
+    except ValueError as exc:
+        errors.append(f"{receipt_path} attestation invalid: {exc}")
 
     for field in COMPARE_FIELDS:
         if payload.get(field) != row.get(field):
