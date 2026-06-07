@@ -15,8 +15,10 @@ REQUIRED_HTML_IDS = {
     "attempt-count",
     "candidate-response-count",
     "attribution-line",
+    "hero-status",
     "last-update",
     "leaderboard-rows",
+    "pairs-table-rows",
 }
 REQUIRED_ROW_FIELDS = {
     "rank",
@@ -59,6 +61,12 @@ REQUIRED_PAIR_FIELDS = {
     "first_17_response",
     "first_16_response",
 }
+METHODOLOGICAL_NOTE_ANCHORS = (
+    "Llama-3.2-3B",
+    "13-instruction",
+    "no_failed_context",
+    "csel-tile",
+)
 
 
 class IdCollector(HTMLParser):
@@ -98,6 +106,7 @@ def validate_html(web_dir: Path, errors: list[str]) -> None:
 
     parser = IdCollector()
     text = index.read_text()
+    normalized_text = " ".join(text.split())
     parser.feed(text)
     missing_ids = sorted(REQUIRED_HTML_IDS - parser.ids)
     require(not missing_ids, f"web/index.html is missing required ids: {', '.join(missing_ids)}", errors)
@@ -109,6 +118,12 @@ def validate_html(web_dir: Path, errors: list[str]) -> None:
     require(
         "/private/tmp/arm64golf-sandbox" not in text,
         "web/index.html must not embed internal sandbox host paths",
+        errors,
+    )
+    missing_note_anchors = [anchor for anchor in METHODOLOGICAL_NOTE_ANCHORS if anchor not in normalized_text]
+    require(
+        not missing_note_anchors,
+        "web/index.html methodological note missing stable anchors: " + ", ".join(missing_note_anchors),
         errors,
     )
     require("./app.js" in parser.scripts, "web/index.html does not load ./app.js", errors)

@@ -5,6 +5,7 @@ const bestHashEl = document.querySelector("#best-hash");
 const lastUpdateEl = document.querySelector("#last-update");
 const attemptCountEl = document.querySelector("#attempt-count");
 const candidateResponseCountEl = document.querySelector("#candidate-response-count");
+const pairsRowsEl = document.querySelector("#pairs-table-rows");
 
 fetch("./public/leaderboard.json", { cache: "no-store" })
   .then((response) => {
@@ -14,10 +15,15 @@ fetch("./public/leaderboard.json", { cache: "no-store" })
   .then(render)
   .catch((error) => {
     rowsEl.innerHTML = `<tr><td colspan="7">Score history unavailable: ${escapeHtml(error.message)}</td></tr>`;
+    if (pairsRowsEl) {
+      pairsRowsEl.innerHTML = `<tr><td colspan="5">Marketplace canaries unavailable: ${escapeHtml(error.message)}</td></tr>`;
+    }
   });
 
 function render(data) {
   const rows = data.rows || [];
+  renderPairs(data.pairs || []);
+
   if (rows.length === 0) {
     rowsEl.innerHTML = '<tr><td colspan="7">No verified candidates yet.</td></tr>';
     return;
@@ -49,6 +55,39 @@ function render(data) {
       </tr>`
     )
     .join("");
+}
+
+function renderPairs(pairs) {
+  if (!pairsRowsEl) return;
+
+  if (pairs.length === 0) {
+    pairsRowsEl.innerHTML = '<tr><td colspan="5">No marketplace canaries yet.</td></tr>';
+    return;
+  }
+
+  pairsRowsEl.innerHTML = pairs
+    .map(
+      (pair) => `<tr>
+        <td><span class="mono">${escapeHtml(pair.provider_id || "—")}</span></td>
+        <td><span class="mono">${escapeHtml(shortModel(pair.model_id))}</span></td>
+        <td>
+          <span class="mono">${escapeHtml(pair.template_name || "—")}</span>
+          ${pair.template_id ? `<span class="secondary">${escapeHtml(pair.template_id)}</span>` : ""}
+        </td>
+        <td class="score">${formatBestScore(pair.best_verified_score)}</td>
+        <td>${numOrDash(pair.verified_count)} / ${numOrDash(pair.evaluated_responses)}</td>
+      </tr>`
+    )
+    .join("");
+}
+
+function formatBestScore(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? `${n} instructions` : "none";
+}
+
+function shortModel(modelId) {
+  return String(modelId || "—").replace("mlx-community/", "");
 }
 
 function numOrDash(value) {

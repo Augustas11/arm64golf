@@ -1959,6 +1959,39 @@ def test_validate_web_accepts_current_static_assets() -> None:
     assert script.validate(Path("web")) == []
 
 
+def test_validate_web_accepts_methodological_note_anchor_rewording(tmp_path: Path) -> None:
+    script = load_script("bin/validate-web.py")
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    html = Path("web/index.html").read_text().replace(
+        "Phase 4 marketplace runs showed that Llama-3.2-3B surfaced two\n"
+        "          distinct 13-instruction csel-tile variants on the neutral <code>no_failed_context</code> prompt\n"
+        "          without any embedded csel pattern.",
+        "Phase 4 marketplace evidence: Llama-3.2-3B, using <code>no_failed_context</code>,\n"
+        "          produced a 13-instruction result in the csel-tile family without any embedded csel pattern.",
+    )
+    (web_dir / "index.html").write_text(html)
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    (web_dir / "public" / "leaderboard.json").write_text(Path("web/public/leaderboard.json").read_text())
+
+    assert script.validate(web_dir) == []
+
+
+def test_validate_web_rejects_methodological_note_missing_anchor(tmp_path: Path) -> None:
+    script = load_script("bin/validate-web.py")
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    html = Path("web/index.html").read_text().replace("csel-tile", "conditional-select")
+    (web_dir / "index.html").write_text(html)
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    (web_dir / "public" / "leaderboard.json").write_text(Path("web/public/leaderboard.json").read_text())
+
+    errors = script.validate(web_dir)
+    assert any("methodological note missing stable anchors: csel-tile" in error for error in errors)
+
+
 def test_validate_web_rejects_incomplete_leaderboard_row(tmp_path: Path) -> None:
     script = load_script("bin/validate-web.py")
     web_dir = tmp_path / "web"

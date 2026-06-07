@@ -47,10 +47,10 @@
           produce verifiable ARM64 routines shorter than published references. The metric is instruction
           count over a deterministic 1200-case verifier. The unit of progress is a signed candidate.
         </p>
-        <p class="hero-status">
-          Best verified ARM64 <code>sort3</code>: <strong>12 instructions</strong> — prompt-assisted, not a discovery-class result.
-          Live MacProvider catalog as of 2026-06-07: 1 provider, 1 model. The benchmark grows as the network does;
-          <a href="#participate">join as a provider or prompt contributor</a>.
+        <p class="hero-status" id="hero-status">
+          Best verified ARM64 <code>sort3</code>: <strong>12 instructions</strong> (Qwen-Coder-7B on <code>csel_hint</code>)
+          and <strong>13 instructions</strong> (Llama-3.2-3B on the neutral <code>no_failed_context</code>, no embedded hint).
+          Live MacProvider catalog as of 2026-06-07: 2 providers, 2 models. <a href="#participate">Add yours</a>.
         </p>
       </section>
 
@@ -58,14 +58,17 @@
         <h2>How it works</h2>
         <p class="body">
           The harness submits a prompt to an open-weight coding model through an OpenAI-compatible
-          endpoint pinned to a single MacProvider node. The v0.1 configuration is
-          <code>mlx-community/Qwen2.5-Coder-7B-Instruct-4bit</code> on provider <code>air5</code>. Each
-          model response is parsed for an ARM64 assembly block, assembled into a native binary, and
-          executed under a deny-by-default <code>sandbox-exec</code> profile against 1200 deterministic
-          test cases. Any failure rejects the candidate. A passing candidate is hashed, scored by static
-          instruction count after a normalization pass, and bound into an ed25519 receipt that commits
-          to <code>(problem_id, candidate_hash, score, model_id, provider_id, harness_version, timestamp)</code>.
-          The public score for a problem is the lowest verified instruction count on record.
+          endpoint on MacProvider. With <code>--allow-marketplace-attribution</code>, the harness can pin
+          to any <code>(provider, model)</code> pair on the network; the v0.1 default pin to
+          <code>air5</code> + <code>mlx-community/Qwen2.5-Coder-7B-Instruct-4bit</code> remains the
+          conservative default for unattended runs. Each model response is parsed for an ARM64 assembly
+          block, assembled into a native binary, and executed under a deny-by-default
+          <code>sandbox-exec</code> profile against 1200 deterministic test cases. Any failure rejects
+          the candidate. A passing candidate is hashed, scored by static instruction count after a
+          normalization pass, and bound into an ed25519 receipt that names the
+          <code>(provider, model, template)</code> it came from: <code>kind='reference-harness'</code>,
+          with signed <code>template_id</code> details. The public score for a problem is the lowest
+          verified instruction count on record.
         </p>
         <p class="body">
           The receipt-signing key is operator-held and never sees model output. Anyone with
@@ -96,30 +99,57 @@
       <section class="participate" id="participate">
         <h2>Participate</h2>
         <p class="body">
-          Two roles are open in the v0.1 preview. A third opens after public launch.
+          Phase 4 moved the project from a single-node calibration preview to an attributable marketplace
+          record. There are now two active recruiting tracks and one gated submission track.
         </p>
 
         <dl class="roles">
-          <dt>Run a provider</dt>
+          <dt>Track A: Run a provider</dt>
           <dd>
             Operate an Apple Silicon Mac as an MLX inference endpoint on the MacProvider network. The
             arm64golf harness, and other workloads, can pin to your node by provider identifier.
+            When the harness reaches your node, its responses are bound to your <code>provider_id</code>
+            in every receipt and every <code>pairs[]</code> row. Llama-3.2-3B on <code>air8gb</code> is
+            the current example.
             <a href="https://github.com/Augustas11/macprovider#for-providers" rel="noopener">Provider onboarding</a>.
           </dd>
 
-          <dt>Register a contestant model</dt>
+          <dt>Track B: Contribute a prompt template <span class="track-state">newly open</span></dt>
           <dd>
-            Public contestant intake is closed in v0.1 to preserve attribution between prompt and model
-            during the calibration phase. Submit an interest issue specifying model, quantization, and
-            target provider for post-launch intake.
-            <a href="https://github.com/Augustas11/arm64golf/issues" rel="noopener">Contestant interest issue</a>.
+            Phase 2 receipt v2 signs <code>template_id</code> and <code>template_name</code> into every
+            reference-harness receipt, so a contributor's prompt template is attributable in the public
+            record. See
+            <a href="https://github.com/Augustas11/arm64golf/blob/main/prompts/CONTRIBUTING.md" rel="noopener">prompt template contributing</a>,
+            then
+            <a href="https://github.com/Augustas11/arm64golf/issues/new" rel="noopener">submit your template</a>.
+            Track B is operator-reviewed: contributions land via issue, the operator registers the template
+            into <code>harness/prompts.py</code>, runs the canary, and publishes the resulting <code>pairs[]</code>
+            row + receipts. When a template lands, the operator runs a bounded canary targeting roughly
+            200 candidate responses when provider quota permits; the exact evaluated count is published in
+            <code>pairs[].evaluated_responses</code>. Reference-harness receipts are signed on any verified
+            candidates the template produces.
+            <ol class="track-checklist">
+              <li>Open an issue with the template body, intent, and suggested name.</li>
+              <li>The operator registers it in <code>harness/prompts.py</code>.</li>
+              <li>The operator runs a bounded canary.</li>
+              <li>The operator publishes results and signs reference-harness receipts.</li>
+            </ol>
+            The contributor identity in the issue link is credit metadata, NOT cryptographic provenance.
+            The receipt's <code>kind='reference-harness'</code> attestation does not name the contributor;
+            it names the operator-run harness.
           </dd>
 
-          <dt>Propose a problem</dt>
+          <dt>Track C: Open submission track <span class="track-state gated">gated, coming</span></dt>
           <dd>
-            The pipeline is problem-agnostic. A candidate problem requires a deterministic verifier, a
-            published reference score, and a justification for instruction-count as the relevant metric.
-            <a href="https://github.com/Augustas11/arm64golf/issues/new" rel="noopener">Open a problem proposal</a>.
+            <ul class="gate-list" aria-label="open submission gates">
+              <li><span class="gate-marker not-yet" aria-hidden="true">[ ]</span> G1 — verify-only path: NOT YET. Flips to DONE only after <code>bin/verify-candidate.py</code> passes the existing fixture + smoke tests AND signs no model-derived receipt (its only output is open-submission receipts).</li>
+              <li><span class="gate-marker done" aria-hidden="true">[x]</span> G2 — receipt v2 substrate in production: DONE (Phase 2)</li>
+              <li><span class="gate-marker not-yet" aria-hidden="true">[ ]</span> G3 — three or more canary-complete <code>(provider, model, template)</code> reference-harness rows on the leaderboard. NOT YET (currently 6 rows but only 2 distinct <code>(provider, model)</code> tuples; the goal is breadth across at least 3 distinct tuples).</li>
+              <li><span class="gate-marker not-yet" aria-hidden="true">[ ]</span> G4 — submission intake exists and end-to-end smoke-tested: NOT YET</li>
+            </ul>
+            When all four turn green, contestants can submit raw assembly with an attestation JSON; the
+            operator runs only the verifier and signs an open-submission receipt. One of four gates is
+            open; three are not yet. Watch this section.
           </dd>
         </dl>
       </section>
@@ -155,15 +185,33 @@
           </tbody>
         </table>
 
+        <h3 class="subhead">Per-pair Pareto</h3>
+        <div class="table-wrap">
+          <table class="frontier-table pairs-table">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Model</th>
+                <th>Template</th>
+                <th>Best verified</th>
+                <th>Verified/evaluated</th>
+              </tr>
+            </thead>
+            <tbody id="pairs-table-rows">
+              <tr><td colspan="5">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
         <p class="note">
-          <strong>Methodological note.</strong> The best verified ARM64 candidate at 12 instructions
-          (<code>57b2aa236342</code>) is produced by the model tiling the four-instruction
-          <code>cmp/csel/csel/mov</code> block supplied as a worked example in the <code>csel_hint</code>
-          prompt template. The receipt is valid against the 1200-case verifier. The structural credit is
-          shared between the prompt and the sampler. A discovery-class result requires either a verified
-          candidate below 12 from a template that does not contain the structure, or a verified candidate
-          with non-isomorphic structure. Neither has been observed across 223 post-canary evaluations on
-          the 7B configuration. Full record in
+          <strong>Methodological note.</strong> The 12-instruction csel-tile result was first surfaced by
+          Qwen-Coder-7B on <code>csel_hint</code> and <code>dual_example</code>, prompts that embed a
+          4-instruction csel block. Phase 4 marketplace runs showed that Llama-3.2-3B surfaced two
+          distinct 13-instruction csel-tile variants on the neutral <code>no_failed_context</code> prompt
+          without any embedded csel pattern. Within the two open-weight coder models on the network today,
+          prompt-elicitation threshold for the csel-tile structure varies by model; whether the structure
+          is broadly present in coder-model training corpora is not something the current data establishes.
+          Full record in
           <a href="https://github.com/Augustas11/arm64golf/blob/main/REPORT.md" rel="noopener">REPORT.md</a>.
         </p>
       </section>
