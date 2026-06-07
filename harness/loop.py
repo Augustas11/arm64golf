@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from hashlib import sha256
 from datetime import datetime, UTC
@@ -13,17 +14,31 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from harness.attest import canonical_json, sign_receipt
-from harness.inference import DEFAULT_MODEL, DEFAULT_PROVIDER, InferenceConfig, InferenceError, MacProviderClient
 from harness.module import load_problem_module
-from harness.prompts import ABLATION_TEMPLATES, build_prompt, extract_assembly, template_id
-from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID, Store
-from harness.verdict import is_search_terminal
+from harness.prompts import ABLATION_TEMPLATES, template_id
+from harness.sanitize import sanitize_control_chars
 from sandbox.runner import run_candidate as run_sandboxed_candidate
 
 
 HARNESS_VERSION = "0.2.0"
 ATTESTATION_FIELDS = ("kind", "details")
 REFERENCE_ATTESTATION_DETAIL_FIELDS = ("template_id", "template_name", "temperature", "top_p", "n")
+OPEN_SUBMISSION_ATTESTATION_DETAIL_FIELDS = (
+    "declared_model_id",
+    "declared_provider",
+    "declared_search_strategy",
+    "submitter_handle",
+    "issue_url",
+)
+OPEN_SUBMISSION_FIELD_CAPS = {
+    "declared_model_id": 200,
+    "declared_provider": 100,
+    "declared_search_strategy": 500,
+    "submitter_handle": 40,
+    "issue_url": 4096,
+}
+OPEN_SUBMISSION_HANDLE_RE = re.compile(r"^@[A-Za-z0-9](?:-?[A-Za-z0-9])*$")
+OPEN_SUBMISSION_ISSUE_RE = re.compile(r"^https://github\.com/Augustas11/arm64golf/issues/\d+$")
 EMPTY_DETAILS_ATTESTATION_KINDS = frozenset({"seed-baseline", "legacy-v1-unknown", "mock"})
 
 
@@ -55,6 +70,8 @@ def require_pinned_attribution(
     seed_only: bool,
     allow_marketplace: bool = False,
 ) -> None:
+    from harness.inference import DEFAULT_MODEL, DEFAULT_PROVIDER
+
     if mock or seed_only:
         return
     if allow_marketplace:
@@ -130,6 +147,10 @@ def validate_attestation(attestation: object) -> None:
         validate_reference_attestation_details(details)
         validate_attestation_details_size(details)
         return
+    if kind == "open-submission":
+        validate_open_submission_attestation_details(details)
+        validate_attestation_details_size(details)
+        return
     try:
         validate_attestation_details_size(details)
     except TypeError as exc:
@@ -158,6 +179,50 @@ def validate_reference_attestation_details(details: dict[str, object]) -> None:
     expected_template_id = template_id(template_name)
     if template_id_value != expected_template_id:
         raise ValueError(f"reference-harness template_id must be {expected_template_id}")
+
+
+def sanitize_open_submission_attestation(attestation: dict[str, object]) -> dict[str, object]:
+    if attestation.get("kind") != "open-submission" or not isinstance(attestation.get("details"), dict):
+        return attestation
+    sanitized = dict(attestation)
+    details = dict(attestation["details"])  # type: ignore[index]
+    for field, cap in OPEN_SUBMISSION_FIELD_CAPS.items():
+        if field not in details:
+            continue
+        details[field] = sanitize_open_submission_detail_field(field, details[field], cap)
+    sanitized["details"] = details
+    return sanitized
+
+
+def sanitize_open_submission_detail_field(field: str, value: object, cap: int) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"open-submission {field} must be a string")
+    if "\x00" in value:
+        raise ValueError(f"open-submission {field} must not contain NUL bytes")
+    sanitized = sanitize_control_chars(value)
+    if not sanitized:
+        raise ValueError(f"open-submission {field} must be non-empty")
+    if len(sanitized) > cap:
+        raise ValueError(f"open-submission {field} must be <= {cap} chars")
+    return sanitized
+
+
+def validate_open_submission_attestation_details(details: dict[str, object]) -> None:
+    if set(details.keys()) != set(OPEN_SUBMISSION_ATTESTATION_DETAIL_FIELDS):
+        raise ValueError(f"open-submission details fields must be {OPEN_SUBMISSION_ATTESTATION_DETAIL_FIELDS}")
+    for field, cap in OPEN_SUBMISSION_FIELD_CAPS.items():
+        sanitized = sanitize_open_submission_detail_field(field, details[field], cap)
+        if details[field] != sanitized:
+            raise ValueError(f"open-submission {field} must be sanitized")
+    submitter_handle = details["submitter_handle"]
+    issue_url = details["issue_url"]
+    if not OPEN_SUBMISSION_HANDLE_RE.fullmatch(str(submitter_handle)):
+        raise ValueError("open-submission submitter_handle must match ^@[A-Za-z0-9](?:-?[A-Za-z0-9])*$")
+    if not OPEN_SUBMISSION_ISSUE_RE.fullmatch(str(issue_url)):
+        raise ValueError(
+            "open-submission issue_url must match "
+            "^https://github.com/Augustas11/arm64golf/issues/\\d+$"
+        )
 
 
 def receipt_payload(
@@ -217,6 +282,8 @@ def seed_baseline(
     timeout_ms: int,
     memory_limit_mb: int,
 ) -> None:
+    from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID
+
     count, source = module.baseline()
     candidate = module.load(source)
     verified = sandbox_verify(problem_dir, module, candidate, timeout_ms, memory_limit_mb)
@@ -236,6 +303,11 @@ def seed_baseline(
 
 
 def run(args: argparse.Namespace) -> int:
+    from harness.inference import InferenceConfig, InferenceError, MacProviderClient
+    from harness.prompts import build_prompt, extract_assembly
+    from harness.store import Store
+    from harness.verdict import is_search_terminal
+
     problem_dir = Path(args.problem)
     module = load_problem_module(problem_dir)
     store = Store(Path(args.db))
@@ -397,6 +469,8 @@ def remaining_responses(summary: dict[str, object], max_candidate_responses: int
 
 
 def main() -> int:
+    from harness.inference import DEFAULT_MODEL, DEFAULT_PROVIDER
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--problem", default=str(REPO_ROOT / "problems" / "sort3-arm64"))
     parser.add_argument("--db", default=str(REPO_ROOT / "data" / "arm64golf.sqlite"))

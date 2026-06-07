@@ -737,6 +737,59 @@ population size 1.
 v0.1 is open-weight only by design. No comparison against frontier closed
 models belongs in the launch claim.
 
+## 11. Open Submission Track (Stage C)
+
+### 11.1 Verify-only Path (G1)
+
+The verify-only path accepts contestant-supplied assembly plus a v2 attestation
+object. The operator runs only the local sandbox, verifier, scorer, and receipt
+signer. No model inference, MacProvider request, SQLite write, or leaderboard
+publish happens in this path.
+
+The receipt commits to two facts: this assembly verifies against the 1200-case
+sandbox, and this attestation was claimed at the moment of signing. The receipt
+does NOT claim that the contents of `attestation.details` are true.
+
+The `kind: "open-submission"` tag is not cryptographically tied to
+`bin/verify-candidate.py` being the producer. Any operator-signed receipt with
+`attestation.kind` set to `open-submission` counts. The convention is that the
+operator only emits this kind from `bin/verify-candidate.py`.
+
+`bin/verify-candidate.py` loads the requested problem, verifies the raw assembly
+through the same sandboxed verifier used by the harness, scores the candidate,
+and signs a v2 receipt only if verification passes.
+
+The signed payload uses the normal receipt envelope and fixes these fields:
+
+```json
+{
+  "attestation": {
+    "kind": "open-submission",
+    "details": {
+      "declared_model_id": "non-empty string, <=200 chars",
+      "declared_provider": "non-empty string, <=100 chars",
+      "declared_search_strategy": "non-empty string, <=500 chars",
+      "submitter_handle": "@github-handle, <=40 chars",
+      "issue_url": "https://github.com/Augustas11/arm64golf/issues/..."
+    }
+  },
+  "candidate_hash": "sha256...",
+  "harness_version": "0.2.0",
+  "model_id": "open-submission",
+  "problem_id": "sort3-arm64",
+  "provider_id": "open-submission",
+  "score": 18,
+  "ts": "2026-06-05T00:00:00Z"
+}
+```
+
+`submitter_handle` MUST match `^@[A-Za-z0-9](?:-?[A-Za-z0-9])*$`. `issue_url`
+MUST match `^https://github.com/Augustas11/arm64golf/issues/\d+$`.
+Open-submission string fields
+reject NUL bytes, strip receipt-control characters using the in-band error
+sanitization rule, and must fit the field caps after sanitization. The existing
+4096-byte canonical JSON cap for `attestation.details` still applies.
+
 ## References
 
 - Google DeepMind AlphaDev repository:

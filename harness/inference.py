@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import http.client
-import re
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+
+from harness.sanitize import sanitize_control_chars
 
 
 DEFAULT_ENDPOINT = "https://api.streamvc.live/v1/chat/completions"
@@ -248,11 +249,8 @@ def _raise_in_band_error(err: dict) -> None:
     raise InferenceError(message, kind="server_error")
 
 
-_IN_BAND_ERROR_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
-
-
 def _sanitize_in_band_error_message(message: object) -> str:
-    sanitized = _IN_BAND_ERROR_CONTROL_CHARS.sub("", str(message or "upstream streaming error"))
+    sanitized = sanitize_control_chars(message or "upstream streaming error")
     return sanitized[:200]
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import importlib
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.attest import sign_receipt, verify_receipt
+from harness.attest import ensure_keypair, sign_receipt, verify_receipt
 from harness import attest as attest_module
 from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID
 from harness.loop import main as loop_main, require_pinned_attribution
@@ -877,6 +878,41 @@ def test_store_run_pairs_keeps_open_submission_without_template(tmp_path: Path) 
             "problem_id": "sort3-arm64",
             "provider_id": "air5",
             "model_id": "model-a",
+            "template_name": None,
+            "template_id": None,
+            "attribution_kind": "open_submission",
+            "evaluated_responses": 1,
+            "verified_count": 1,
+            "best_verified_score": 15,
+            "first_verified_response": 1,
+            "first_17_response": 1,
+            "first_16_response": 1,
+        }
+    ]
+    store.close()
+
+
+def test_run_pairs_handles_open_submission_provider_model(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    attempt_id = store.record_attempt("sort3-arm64", None, "ok", requested_n=1, response_count=1)
+    _record_pair_evaluation(
+        store,
+        attempt_id=attempt_id,
+        candidate_hash="open-hash",
+        score=15,
+        verified=True,
+        provider_id="open-submission",
+        model_id="open-submission",
+    )
+    receipt_path = tmp_path / "open.json"
+    receipt_path.write_text(json.dumps({"payload": {"attestation": {"kind": "open-submission", "details": {}}}}))
+    store.record_receipt("open-hash", receipt_path, "signature")
+
+    assert store.run_pairs("sort3-arm64") == [
+        {
+            "problem_id": "sort3-arm64",
+            "provider_id": "open-submission",
+            "model_id": "open-submission",
             "template_name": None,
             "template_id": None,
             "attribution_kind": "open_submission",
@@ -2316,6 +2352,426 @@ def test_sign_and_verify_v2_reference_harness_receipt(tmp_path: Path) -> None:
     }
 
 
+def _valid_open_submission_attestation(**detail_overrides: object) -> dict[str, object]:
+    details: dict[str, object] = {
+        "declared_model_id": "contestant-model",
+        "declared_provider": "contestant-provider",
+        "declared_search_strategy": "manual local search",
+        "submitter_handle": "@contestant-1",
+        "issue_url": "https://github.com/Augustas11/arm64golf/issues/1",
+    }
+    details.update(detail_overrides)
+    return {"kind": "open-submission", "details": details}
+
+
+def _verify_candidate_args(
+    tmp_path: Path,
+    *,
+    assembly_source: str,
+    attestation: dict[str, object],
+    json_mode: bool = False,
+    create_keys: bool = True,
+) -> argparse.Namespace:
+    assembly_path = tmp_path / "candidate.s"
+    attestation_path = tmp_path / "attestation.json"
+    assembly_path.write_text(assembly_source)
+    attestation_path.write_text(json.dumps(attestation))
+    receipts = tmp_path / "receipts"
+    args = argparse.Namespace(
+        assembly=assembly_path,
+        attestation=attestation_path,
+        problem=Path("problems/sort3-arm64"),
+        receipts_dir=receipts,
+        private_key=tmp_path / "data" / "sign.key",
+        public_key=receipts / "PUBKEY",
+        timeout_ms=100,
+        memory_limit_mb=256,
+        json=json_mode,
+    )
+    if create_keys:
+        ensure_keypair(args.private_key, args.public_key)
+    return args
+
+
+def _run_verify_candidate(
+    tmp_path: Path,
+    *,
+    assembly_source: str | None = None,
+    attestation: dict[str, object] | None = None,
+) -> tuple[object, dict[str, object], argparse.Namespace]:
+    script = load_script("bin/verify-candidate.py")
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    source = assembly_source if assembly_source is not None else module.baseline()[1]
+    args = _verify_candidate_args(
+        tmp_path,
+        assembly_source=source,
+        attestation=attestation if attestation is not None else _valid_open_submission_attestation(),
+    )
+    return script, script.main_logic(args), args
+
+
+def test_verify_candidate_happy_path(tmp_path: Path) -> None:
+    script, result, args = _run_verify_candidate(tmp_path)
+
+    assert result["ok"] is True
+    receipt_path = args.receipts_dir / f"{result['candidate_hash'][:12]}.json"
+    assert receipt_path.exists()
+    assert verify_receipt(receipt_path)
+    envelope = json.loads(receipt_path.read_text())
+    payload = envelope["payload"]
+    assert payload["attestation"]["kind"] == "open-submission"
+    assert payload["model_id"] == "open-submission"
+    assert payload["provider_id"] == "open-submission"
+    assert payload["score"] == result["score"]
+    assert script.FORBIDDEN_MODULES
+
+
+@pytest.mark.parametrize("kind", ["reference-harness", "mock", "seed-baseline"])
+def test_verify_candidate_rejects_input_kind_non_open_submission(tmp_path: Path, kind: str) -> None:
+    _, result, _ = _run_verify_candidate(tmp_path, attestation={"kind": kind, "details": {}})
+
+    assert result["ok"] is False
+    assert any("open-submission" in error for error in result["errors"])
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "declared_model_id",
+        "declared_provider",
+        "declared_search_strategy",
+        "submitter_handle",
+        "issue_url",
+    ],
+)
+@pytest.mark.parametrize("invalid_value", [None, "", 123])
+def test_verify_candidate_rejects_missing_empty_or_wrong_type_details_field(
+    tmp_path: Path,
+    field: str,
+    invalid_value: object,
+) -> None:
+    attestation = _valid_open_submission_attestation()
+    details = attestation["details"]
+    assert isinstance(details, dict)
+    if invalid_value is None:
+        del details[field]
+    else:
+        details[field] = invalid_value
+
+    _, result, _ = _run_verify_candidate(tmp_path, attestation=attestation)
+
+    assert result["ok"] is False
+    assert any(field in error for error in result["errors"])
+
+
+def test_verify_candidate_rejects_oversized_search_strategy(tmp_path: Path) -> None:
+    _, result, _ = _run_verify_candidate(
+        tmp_path,
+        attestation=_valid_open_submission_attestation(declared_search_strategy="x" * 1000),
+    )
+
+    assert result["ok"] is False
+    assert any("declared_search_strategy" in error and "500" in error for error in result["errors"])
+
+
+@pytest.mark.parametrize("submitter_handle", ["no-at-sign", "@-", "@---", "@abc-", "@abc--def"])
+def test_verify_candidate_rejects_invalid_submitter_handle(tmp_path: Path, submitter_handle: str) -> None:
+    _, result, _ = _run_verify_candidate(
+        tmp_path,
+        attestation=_valid_open_submission_attestation(submitter_handle=submitter_handle),
+    )
+
+    assert result["ok"] is False
+    assert any("submitter_handle" in error for error in result["errors"])
+
+
+@pytest.mark.parametrize(
+    "issue_url",
+    [
+        "https://example.com/foo",
+        "https://github.com/Augustas11/arm64golf/issues/1/",
+        "https://github.com/Augustas11/arm64golf/issues/1#anchor",
+        "https://github.com/Augustas11/arm64golf/issues/1?foo=bar",
+        "https://github.com/Augustas11/arm64golf/issues/123/../../evil",
+    ],
+)
+def test_verify_candidate_rejects_invalid_issue_url(tmp_path: Path, issue_url: str) -> None:
+    _, result, _ = _run_verify_candidate(
+        tmp_path,
+        attestation=_valid_open_submission_attestation(issue_url=issue_url),
+    )
+
+    assert result["ok"] is False
+    assert any("issue_url" in error for error in result["errors"])
+
+
+def test_verify_candidate_rejects_oversized_attestation_json(tmp_path: Path) -> None:
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    args = _verify_candidate_args(
+        tmp_path,
+        assembly_source=module.baseline()[1],
+        attestation=_valid_open_submission_attestation(),
+    )
+    args.attestation.write_text(json.dumps({"kind": "open-submission", "blob": "x" * 100_000}))
+    script = load_script("bin/verify-candidate.py")
+
+    result = script.main_logic(args)
+
+    assert result["ok"] is False
+    assert any("16384-byte" in error for error in result["errors"])
+
+
+def test_verify_candidate_requires_existing_operator_keys(tmp_path: Path) -> None:
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    args = _verify_candidate_args(
+        tmp_path,
+        assembly_source=module.baseline()[1],
+        attestation=_valid_open_submission_attestation(),
+        create_keys=False,
+    )
+    script = load_script("bin/verify-candidate.py")
+
+    result = script.main_logic(args)
+
+    assert result["ok"] is False
+    assert any("sign.key missing" in error for error in result["errors"])
+    assert not args.private_key.exists()
+
+
+def test_verify_candidate_rechecks_private_key_permissions(tmp_path: Path) -> None:
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    args = _verify_candidate_args(
+        tmp_path,
+        assembly_source=module.baseline()[1],
+        attestation=_valid_open_submission_attestation(),
+    )
+    args.private_key.chmod(0o644)
+    script = load_script("bin/verify-candidate.py")
+
+    result = script.main_logic(args)
+
+    assert result["ok"] is False
+    assert any("0600" in error for error in result["errors"])
+
+
+def test_verify_candidate_rejects_unverifiable_assembly(tmp_path: Path) -> None:
+    _, result, _ = _run_verify_candidate(tmp_path, assembly_source="this is not arm64\n")
+
+    assert result["ok"] is False
+    assert any("verifier rejected" in error for error in result["errors"])
+
+
+def test_verify_candidate_rejects_wrong_output_assembly(tmp_path: Path) -> None:
+    _, result, _ = _run_verify_candidate(tmp_path, assembly_source="mov x0, x1\nmov x1, x2\n")
+
+    assert result["ok"] is False
+    assert any("verifier rejected" in error for error in result["errors"])
+
+
+def test_verify_candidate_sanitizes_control_chars_in_details(tmp_path: Path) -> None:
+    _, result, args = _run_verify_candidate(
+        tmp_path,
+        attestation=_valid_open_submission_attestation(declared_provider="contestant\x07-provider"),
+    )
+
+    assert result["ok"] is True
+    envelope = json.loads((args.receipts_dir / f"{result['candidate_hash'][:12]}.json").read_text())
+    assert envelope["payload"]["attestation"]["details"]["declared_provider"] == "contestant-provider"
+
+
+def test_verify_candidate_does_not_touch_sqlite(tmp_path: Path) -> None:
+    db_path = Path("data/arm64golf.sqlite")
+    before = db_path.stat().st_mtime_ns if db_path.exists() else None
+
+    _, result, _ = _run_verify_candidate(tmp_path)
+
+    after = db_path.stat().st_mtime_ns if db_path.exists() else None
+    assert result["ok"] is True
+    assert after == before
+
+
+def test_verify_candidate_does_not_touch_leaderboard(tmp_path: Path) -> None:
+    leaderboard_path = Path("web/public/leaderboard.json")
+    before = leaderboard_path.stat().st_mtime_ns if leaderboard_path.exists() else None
+
+    _, result, _ = _run_verify_candidate(tmp_path)
+
+    after = leaderboard_path.stat().st_mtime_ns if leaderboard_path.exists() else None
+    assert result["ok"] is True
+    assert after == before
+
+
+def test_verify_candidate_does_not_import_inference(tmp_path: Path) -> None:
+    saved_modules = {
+        name: sys.modules.pop(name)
+        for name in list(sys.modules)
+        if name == "harness.inference" or name.startswith("urllib")
+    }
+    try:
+        _, result, _ = _run_verify_candidate(tmp_path)
+
+        assert result["ok"] is True
+        assert "harness.inference" not in sys.modules
+    finally:
+        sys.modules.update(saved_modules)
+
+
+def test_verify_candidate_rejects_existing_receipt_signed_by_other_key(tmp_path: Path) -> None:
+    script = load_script("bin/verify-candidate.py")
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    source = module.baseline()[1]
+    args = _verify_candidate_args(
+        tmp_path,
+        assembly_source=source,
+        attestation=_valid_open_submission_attestation(),
+    )
+    candidate = module.load(source)
+    attestation = script.normalize_open_submission_attestation(json.loads(args.attestation.read_text()))
+    payload = script.open_submission_payload(candidate, module.score(candidate), attestation, "2026-06-05T00:00:00Z")
+    receipt = sign_receipt(payload, tmp_path / "other" / "sign.key", tmp_path / "other" / "PUBKEY", args.receipts_dir)
+    original = receipt.path.read_text()
+
+    result = script.main_logic(args)
+
+    assert result["ok"] is False
+    assert any("different public key" in error for error in result["errors"])
+    assert receipt.path.read_text() == original
+
+
+def test_verify_candidate_dedups_only_when_pubkey_matches(tmp_path: Path) -> None:
+    _, first, args = _run_verify_candidate(tmp_path)
+    receipt_path = args.receipts_dir / f"{first['candidate_hash'][:12]}.json"
+    original = json.loads(receipt_path.read_text())
+    original_mtime = receipt_path.stat().st_mtime_ns
+
+    script = load_script("bin/verify-candidate.py")
+    second = script.main_logic(args)
+
+    assert second["ok"] is True
+    assert json.loads(receipt_path.read_text())["signature"] == original["signature"]
+    assert receipt_path.stat().st_mtime_ns == original_mtime
+
+
+def test_verify_candidate_refuses_existing_receipt_with_different_attestation(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _, first, args = _run_verify_candidate(tmp_path)
+    assert first["ok"] is True
+    args.attestation.write_text(
+        json.dumps(_valid_open_submission_attestation(submitter_handle="@contestant-2"))
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "verify-candidate.py",
+            "--assembly",
+            str(args.assembly),
+            "--attestation",
+            str(args.attestation),
+            "--receipts-dir",
+            str(args.receipts_dir),
+            "--private-key",
+            str(args.private_key),
+            "--public-key",
+            str(args.public_key),
+        ],
+    )
+    script = load_script("bin/verify-candidate.py")
+
+    assert script.main() == 1
+    captured = capsys.readouterr()
+    assert "existing receipt" in captured.err
+
+
+def test_verify_candidate_json_mode_redacts_candidate_hash_and_score_on_error(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    args = _verify_candidate_args(
+        tmp_path,
+        assembly_source="mov x0, x1\nmov x1, x2\n",
+        attestation=_valid_open_submission_attestation(),
+        json_mode=True,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "verify-candidate.py",
+            "--assembly",
+            str(args.assembly),
+            "--attestation",
+            str(args.attestation),
+            "--receipts-dir",
+            str(args.receipts_dir),
+            "--private-key",
+            str(args.private_key),
+            "--public-key",
+            str(args.public_key),
+            "--json",
+        ],
+    )
+    script = load_script("bin/verify-candidate.py")
+
+    assert script.main() == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["candidate_hash"] is None
+    assert payload["score"] is None
+    assert payload["errors"]
+
+
+def test_verify_candidate_json_mode(tmp_path: Path, monkeypatch, capsys) -> None:
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    args = _verify_candidate_args(
+        tmp_path,
+        assembly_source=module.baseline()[1],
+        attestation=_valid_open_submission_attestation(),
+        json_mode=True,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "verify-candidate.py",
+            "--assembly",
+            str(args.assembly),
+            "--attestation",
+            str(args.attestation),
+            "--receipts-dir",
+            str(args.receipts_dir),
+            "--private-key",
+            str(args.private_key),
+            "--public-key",
+            str(args.public_key),
+            "--json",
+        ],
+    )
+    script = load_script("bin/verify-candidate.py")
+
+    assert script.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert set(payload) == {"ok", "candidate_hash", "score", "errors"}
+    assert payload["ok"] is True
+    assert isinstance(payload["candidate_hash"], str)
+    assert isinstance(payload["score"], int)
+    assert payload["errors"] == []
+
+
+def test_verify_candidate_emits_open_submission_only(tmp_path: Path) -> None:
+    _, result, args = _run_verify_candidate(tmp_path)
+
+    envelope = json.loads((args.receipts_dir / f"{result['candidate_hash'][:12]}.json").read_text())
+    payload = envelope["payload"]
+    assert payload["attestation"]["kind"] == "open-submission"
+    assert payload["model_id"] == "open-submission"
+    assert payload["provider_id"] == "open-submission"
+
+
 @pytest.mark.parametrize(
     ("template_name", "temperature", "top_p", "n", "message"),
     [
@@ -2340,7 +2796,7 @@ def test_reference_attestation_rejects_invalid_inputs(
 def test_validate_attestation_accepts_forward_compatible_unknown_kind() -> None:
     from harness.loop import validate_attestation
 
-    validate_attestation({"kind": "open-submission", "details": {"team": "future", "scorecard": [1, 2, 3]}})
+    validate_attestation({"kind": "future-kind", "details": {"team": "future", "scorecard": [1, 2, 3]}})
 
 
 def test_validate_attestation_rejects_bad_known_or_unserializable_shapes() -> None:
@@ -2349,7 +2805,7 @@ def test_validate_attestation_rejects_bad_known_or_unserializable_shapes() -> No
     with pytest.raises(ValueError, match="details must be empty"):
         validate_attestation({"kind": "mock", "details": {"template_name": "csel_hint"}})
     with pytest.raises(ValueError, match="JSON-serializable"):
-        validate_attestation({"kind": "open-submission", "details": {"bad": {1, 2}}})
+        validate_attestation({"kind": "future-kind", "details": {"bad": {1, 2}}})
 
 
 def test_validate_attestation_enforces_details_size_cap() -> None:
@@ -2358,10 +2814,10 @@ def test_validate_attestation_enforces_details_size_cap() -> None:
 
     empty_blob_size = len(canonical_json({"blob": ""}))
     boundary_blob = "x" * (4096 - empty_blob_size)
-    validate_attestation({"kind": "open-submission", "details": {"blob": boundary_blob}})
+    validate_attestation({"kind": "future-kind", "details": {"blob": boundary_blob}})
 
     with pytest.raises(ValueError, match="attestation.details exceeds 4096-byte cap"):
-        validate_attestation({"kind": "open-submission", "details": {"blob": boundary_blob + "x"}})
+        validate_attestation({"kind": "future-kind", "details": {"blob": boundary_blob + "x"}})
 
 
 def test_sign_and_verify_v2_seed_baseline_receipt(tmp_path: Path) -> None:
