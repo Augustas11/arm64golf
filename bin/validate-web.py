@@ -45,6 +45,20 @@ REQUIRED_SUMMARY_FIELDS = {
     "near_best_unique_structure_count",
     "near_best_structures",
 }
+REQUIRED_PAIR_FIELDS = {
+    "problem_id",
+    "provider_id",
+    "model_id",
+    "template_name",
+    "template_id",
+    "attribution_kind",
+    "evaluated_responses",
+    "verified_count",
+    "best_verified_score",
+    "first_verified_response",
+    "first_17_response",
+    "first_16_response",
+}
 
 
 class IdCollector(HTMLParser):
@@ -115,10 +129,21 @@ def validate_leaderboard(web_dir: Path, errors: list[str]) -> None:
         errors.append(str(exc))
         return
 
-    for field in ["problem_id", "attempt_count", "requested_candidate_count", "candidate_response_count", "run_summary", "rows"]:
+    for field in [
+        "problem_id",
+        "attempt_count",
+        "requested_candidate_count",
+        "candidate_response_count",
+        "run_summary",
+        "pairs",
+        "rows",
+    ]:
         require(field in payload, f"leaderboard JSON missing top-level field {field}", errors)
     require(payload.get("problem_id") == "sort3-arm64", "leaderboard problem_id must be sort3-arm64", errors)
     require(isinstance(payload.get("rows"), list), "leaderboard rows must be a list", errors)
+    require(isinstance(payload.get("pairs"), list), "leaderboard pairs must be a list", errors)
+    if "pairs_truncated" in payload:
+        require(isinstance(payload.get("pairs_truncated"), bool), "leaderboard pairs_truncated must be a bool", errors)
 
     summary = payload.get("run_summary")
     require(isinstance(summary, dict), "run_summary must be an object", errors)
@@ -132,6 +157,28 @@ def validate_leaderboard(web_dir: Path, errors: list[str]) -> None:
                 "run_summary.top_evaluation_errors must not leak internal sandbox host paths",
                 errors,
             )
+
+    pairs = payload.get("pairs")
+    if isinstance(pairs, list):
+        for index, pair in enumerate(pairs, start=1):
+            require(isinstance(pair, dict), f"pair {index} must be an object", errors)
+            if not isinstance(pair, dict):
+                continue
+            missing_pair = sorted(REQUIRED_PAIR_FIELDS - set(pair))
+            require(not missing_pair, f"pair {index} missing fields: {', '.join(missing_pair)}", errors)
+            require(pair.get("problem_id") == payload.get("problem_id"), f"pair {index} problem_id must match leaderboard problem_id", errors)
+            attribution_kind = pair.get("attribution_kind")
+            require(
+                attribution_kind in {"reference_harness", "open_submission", "mock"},
+                f"pair {index} attribution_kind is invalid",
+                errors,
+            )
+            if attribution_kind == "reference_harness":
+                require(pair.get("template_name") is not None, f"pair {index} template_name is required", errors)
+                require(pair.get("template_id") is not None, f"pair {index} template_id is required", errors)
+            elif attribution_kind in {"open_submission", "mock"}:
+                require(pair.get("template_name") is None, f"pair {index} template_name must be null", errors)
+                require(pair.get("template_id") is None, f"pair {index} template_id must be null", errors)
 
     rows = payload.get("rows")
     if isinstance(rows, list):

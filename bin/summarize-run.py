@@ -15,7 +15,53 @@ from harness.store import Store
 from harness.verdict import verdict
 
 
-def render_markdown(problem_id: str, summary: dict[str, object]) -> str:
+def _value(value: object) -> object:
+    return value if value is not None else "none"
+
+
+def _sorted_pairs(pairs: list[dict[str, object]]) -> list[dict[str, object]]:
+    return sorted(
+        pairs,
+        key=lambda pair: (
+            pair["best_verified_score"] is None,
+            pair["best_verified_score"] if pair["best_verified_score"] is not None else 0,
+            -int(pair["evaluated_responses"]),
+            str(pair["provider_id"]),
+            "" if pair["template_name"] is None else str(pair["template_name"]),
+            str(pair["model_id"]),
+        ),
+    )
+
+
+def render_pairs(pairs: list[dict[str, object]]) -> list[str]:
+    lines = [
+        "## Per-Pair Progress",
+        "",
+        "| provider | model | template | template_id | evals | verified | best | first verified | first <=17 | first <=16 |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    if pairs:
+        for pair in _sorted_pairs(pairs):
+            lines.append(
+                "| "
+                f"{pair['provider_id']} | "
+                f"{pair['model_id']} | "
+                f"{pair['template_name']} | "
+                f"{pair['template_id']} | "
+                f"{pair['evaluated_responses']} | "
+                f"{pair['verified_count']} | "
+                f"{_value(pair['best_verified_score'])} | "
+                f"{_value(pair['first_verified_response'])} | "
+                f"{_value(pair['first_17_response'])} | "
+                f"{_value(pair['first_16_response'])} |"
+            )
+    else:
+        lines.append("| none | none | none | none | 0 | 0 | none | none | none | none |")
+    lines.append("")
+    return lines
+
+
+def render_markdown(problem_id: str, summary: dict[str, object], pairs: list[dict[str, object]] | None = None) -> str:
     status = verdict(summary)
     top_errors = summary.get("top_evaluation_errors") or []
     near_best_structures = summary.get("near_best_structures") or []
@@ -44,6 +90,7 @@ def render_markdown(problem_id: str, summary: dict[str, object]) -> str:
         "PASS/FAIL thresholds use evaluated candidate-response ordinals. PASS-C here means a verified 16-instruction candidate; structural-diversity PASS-C still requires manual review.",
         "",
     ]
+    lines.extend(render_pairs(pairs or []))
     if near_best_structures:
         lines.extend(
             [
@@ -81,11 +128,16 @@ def main() -> int:
     store = Store(args.db)
     try:
         summary = store.run_summary(args.problem_id)
+        pairs = store.run_pairs(args.problem_id)
     finally:
         store.close()
 
-    payload = {"problem_id": args.problem_id, "verdict": verdict(summary), **summary}
-    text = json.dumps(payload, indent=2, sort_keys=True) + "\n" if args.json else render_markdown(args.problem_id, summary)
+    payload = {"problem_id": args.problem_id, "verdict": verdict(summary), "pairs": pairs, **summary}
+    text = (
+        json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        if args.json
+        else render_markdown(args.problem_id, summary, pairs)
+    )
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(text)

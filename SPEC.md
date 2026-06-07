@@ -625,6 +625,42 @@ as the aggregate readiness gate. The readiness gate is intentionally
 conservative: it must report no blockers in the operator environment before a
 live search starts.
 
+### 8.4 Pairs Summary
+
+The top-level leaderboard JSON also includes `pairs`, a list of aggregate
+progress rows for the current problem. Each row summarizes evaluated responses
+for one provider/model attribution group and has this schema:
+
+- `problem_id`
+- `provider_id`
+- `model_id`
+- `template_name` (`string | null`)
+- `template_id` (`string | null`)
+- `attribution_kind` (`reference_harness | open_submission | mock`)
+- `evaluated_responses`
+- `verified_count`
+- `best_verified_score`
+- `first_verified_response`
+- `first_17_response`
+- `first_16_response`
+
+Rows with `attribution_kind: "reference_harness"` MUST have non-null
+`template_name` and `template_id`; `template_id` is derived with
+`harness.prompts.template_id(template_name)`, and legacy template names that are
+no longer in the template registry are skipped. Rows with `open_submission` or
+`mock` attribution MUST set both template fields to null.
+
+The aggregate is derived from `evaluations` joined through `attempts` for
+template attribution and `candidates` for provider/model/problem attribution.
+When the exporter reaches the 256-row `pairs` cap, the top-level leaderboard
+JSON includes the sibling field `pairs_truncated: true`; otherwise the field may
+be omitted.
+
+Seed-baseline entries are excluded from `pairs`: the local seed is not a model
+search attempt and has no prompt template. The exporter excludes both explicit
+`seed-baseline` attempts and `reference-baseline` candidate attribution so old
+and current ledgers do not inflate per-pair response counts.
+
 ## 9. Success Criteria
 
 ### 9.1 PASS-A: Translation Works
