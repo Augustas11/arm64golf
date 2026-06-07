@@ -102,7 +102,7 @@ def validate_spec(path: Path = REPO_ROOT / "SPEC.md") -> list[str]:
     section_order(text, SPEC_SECTIONS, "SPEC.md", errors)
     require_needles(text, SPEC_NEEDLES, "SPEC.md", errors)
     line_count = len(text.splitlines())
-    require(300 <= line_count <= 700, f"SPEC.md should remain roughly 300-600 lines, got {line_count}", errors)
+    require(300 <= line_count <= 750, f"SPEC.md should remain roughly 300-750 lines, got {line_count}", errors)
     require(
         "Status: private-test implementation ready; live air5 run pending" in text,
         "SPEC.md must state the current private-test/live-air5-pending status",

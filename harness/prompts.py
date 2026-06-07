@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from hashlib import sha256
+
 
 SYSTEM_PROMPT = """You are an ARM64 assembly optimizer.
 Return only ARM64 assembly instructions for the requested register ABI.
@@ -201,6 +203,26 @@ ABLATION_TEMPLATES["chain_of_thought"] = (
 # "23 instructions" instead of "17", missing the PASS-B threshold.
 PASS_B_TARGET_TEMPLATES = frozenset({"pass_b_target", "csel_hint", "dual_example", "chain_of_thought"})
 PASS_B_TARGET_COUNT = 17
+
+
+def template_id(name: str) -> str:
+    # A 16-hex sha256 prefix is sufficient for the current registry
+    # (<100 templates). Extend this to 32 hex if the template registry grows
+    # past that size.
+    body = ABLATION_TEMPLATES[name]
+    if name == "chain_of_thought":
+        body = COT_SYSTEM_PROMPT + body
+    return sha256(body.encode("utf-8")).hexdigest()[:16]
+
+
+def ensure_distinct_template_ids() -> None:
+    seen: dict[str, str] = {}
+    for name in ABLATION_TEMPLATES:
+        current_id = template_id(name)
+        previous = seen.get(current_id)
+        if previous is not None:
+            raise ValueError(f"template_id collision: {previous!r} and {name!r} both map to {current_id}")
+        seen[current_id] = name
 
 
 def build_prompt(assembly: str, instruction_count: int, template: str = "no_failed_context") -> list[dict[str, str]]:
