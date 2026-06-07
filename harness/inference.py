@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import http.client
+import re
 import time
 import urllib.error
 import urllib.request
@@ -26,8 +28,9 @@ class InferenceConfig:
     # ≤18. 256 tokens is ~4× upper bound, leaving headroom for the model's
     # preamble/postamble noise without enabling rambling 1000+ token
     # completions that previously blew through the 10s gateway header
-    # timeout (since bumped to 60s, but the cap turns the timeout into a
-    # fallback rather than a load-bearing knob).
+    # timeout. SSE streaming now keeps bytes flowing under the standard
+    # gateway timeout; the 60s client cap is a fallback rather than a
+    # load-bearing knob.
     max_tokens: int = 256
     # Sleep this many seconds between successive single-completion calls
     # inside one fanned-out batch. Prevents per-minute burst throttles from
@@ -36,6 +39,10 @@ class InferenceConfig:
     # Cap on 429-burst backoff. Quota_exhausted never retries; this only
     # applies to transient burst throttling.
     burst_backoff_cap_s: float = 30.0
+    stream_total_timeout_s: float = 60.0
+    stream_idle_timeout_s: float = 10.0
+    stream_max_bytes: int = 4 * 1024 * 1024
+    stream_max_line_bytes: int = 64 * 1024
 
 
 class InferenceError(RuntimeError):
@@ -134,6 +141,7 @@ class MacProviderClient:
             "top_p": self.config.top_p,
             "n": 1,
             "max_tokens": self.config.max_tokens,
+            "stream": True,
         }
         body = json.dumps(payload).encode("utf-8")
         headers = {
@@ -145,12 +153,17 @@ class MacProviderClient:
         else:
             headers["X-Demo-Token"] = self.demo_token
 
+        started_at = time.monotonic()
         for attempt in range(self.config.max_retries + 1):
             req = urllib.request.Request(self.config.endpoint, data=body, headers=headers, method="POST")
             try:
-                with urllib.request.urlopen(req, timeout=self.config.timeout_s) as resp:
-                    raw = resp.read()
-                return parse_chat_response(raw)
+                socket_timeout_s = min(
+                    self.config.timeout_s,
+                    self.config.stream_idle_timeout_s,
+                    _remaining_stream_budget(started_at, self.config),
+                )
+                with urllib.request.urlopen(req, timeout=socket_timeout_s) as resp:
+                    return _read_stream_response(resp, self.config, started_at)
             except urllib.error.HTTPError as exc:
                 if exc.code in {401, 403}:
                     raise AuthError(f"authentication failed (http {exc.code})") from exc
@@ -167,15 +180,16 @@ class MacProviderClient:
                         raise BurstThrottledError(
                             f"burst throttled after {attempt + 1} attempts"
                         ) from exc
-                    time.sleep(sleep_s)
+                    _sleep_within_stream_budget(sleep_s, started_at, self.config)
                     continue
                 if 500 <= exc.code < 600 and attempt < self.config.max_retries:
-                    time.sleep(min(2**attempt, 30))
+                    _sleep_within_stream_budget(min(2**attempt, 30), started_at, self.config)
                     continue
                 raise InferenceError(f"macprovider http {exc.code}", kind=f"http_{exc.code}") from exc
             except (TimeoutError, urllib.error.URLError) as exc:
+                _raise_if_stream_deadline_exceeded(started_at, self.config)
                 if attempt < self.config.max_retries:
-                    time.sleep(min(2**attempt, 30))
+                    _sleep_within_stream_budget(min(2**attempt, 30), started_at, self.config)
                     continue
                 raise ProviderUnreachableError("provider offline or timed out") from exc
         # Should be unreachable — every code path above either returns or raises.
@@ -206,19 +220,197 @@ def _classify_429(exc: urllib.error.HTTPError) -> tuple[str, float | None, int |
         body = json.loads(body_bytes) if body_bytes else {}
         err = body.get("error", {}) if isinstance(body, dict) else {}
         code = (err.get("code") or "").lower()
-        if "quota" in code:
-            kind = "quota_exhausted"
-        elif "rate" in code or "burst" in code:
-            kind = "burst"
+        classified = _classify_error_code(code)
+        if classified in {"quota_exhausted", "burst"}:
+            kind = classified
     except (OSError, ValueError, json.JSONDecodeError):
         pass
     return kind, retry_after_s, reset_unix
 
 
+def _classify_error_code(code: str) -> str:
+    lowered = code.lower()
+    if "quota" in lowered:
+        return "quota_exhausted"
+    if "rate" in lowered or "burst" in lowered:
+        return "burst"
+    return "server_error"
+
+
+def _raise_in_band_error(err: dict) -> None:
+    code = str(err.get("code") or "")
+    message = f"upstream server_error: {_sanitize_in_band_error_message(err.get('message'))}"
+    kind = _classify_error_code(code)
+    if kind == "quota_exhausted":
+        raise QuotaExhaustedError(message)
+    if kind == "burst":
+        raise BurstThrottledError(message)
+    raise InferenceError(message, kind="server_error")
+
+
+_IN_BAND_ERROR_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
+
+
+def _sanitize_in_band_error_message(message: object) -> str:
+    sanitized = _IN_BAND_ERROR_CONTROL_CHARS.sub("", str(message or "upstream streaming error"))
+    return sanitized[:200]
+
+
+def _raise_if_stream_deadline_exceeded(started_at: float, config: InferenceConfig) -> None:
+    if time.monotonic() - started_at >= config.stream_total_timeout_s:
+        raise InferenceError("SSE total deadline exceeded", kind="stream_truncated")
+
+
+def _remaining_stream_budget(started_at: float, config: InferenceConfig) -> float:
+    remaining = config.stream_total_timeout_s - (time.monotonic() - started_at)
+    if remaining <= 0:
+        raise InferenceError("SSE total deadline exceeded", kind="stream_truncated")
+    return remaining
+
+
+def _sleep_within_stream_budget(sleep_s: float, started_at: float, config: InferenceConfig) -> None:
+    if time.monotonic() + sleep_s >= started_at + config.stream_total_timeout_s:
+        raise InferenceError("SSE total deadline exceeded", kind="stream_truncated")
+    time.sleep(sleep_s)
+
+
+def _raw_line_len(raw_line: bytes | str) -> int:
+    if isinstance(raw_line, bytes):
+        return len(raw_line)
+    return len(raw_line.encode("utf-8"))
+
+
+def _raw_line_endswith_newline(raw_line: bytes | str) -> bool:
+    if isinstance(raw_line, bytes):
+        return raw_line.endswith(b"\n")
+    return raw_line.endswith("\n")
+
+
+def _read_stream_response(resp, config: InferenceConfig, started_at: float) -> list[str]:
+    parser = _SSECompletionParser()
+    total_bytes = 0
+    last_progress_at = started_at
+    while True:
+        try:
+            now = time.monotonic()
+            if now - started_at > config.stream_total_timeout_s:
+                raise InferenceError("SSE total deadline exceeded", kind="stream_truncated")
+            try:
+                raw_line = resp.readline(config.stream_max_line_bytes)
+            except TimeoutError as exc:
+                now = time.monotonic()
+                if now > started_at + config.stream_total_timeout_s:
+                    raise InferenceError("SSE total deadline exceeded", kind="stream_truncated") from exc
+                raise InferenceError("SSE idle deadline exceeded", kind="stream_idle_timeout") from exc
+            now = time.monotonic()
+            if now - last_progress_at > config.stream_idle_timeout_s:
+                raise InferenceError("SSE idle deadline exceeded", kind="stream_idle_timeout")
+            if now - started_at > config.stream_total_timeout_s:
+                raise InferenceError("SSE total deadline exceeded", kind="stream_truncated")
+            if raw_line == b"" or raw_line == "":
+                break
+            last_progress_at = now
+            line_len = _raw_line_len(raw_line)
+            total_bytes += line_len
+            if total_bytes > config.stream_max_bytes:
+                raise InferenceError("SSE byte cap exceeded", kind="stream_truncated")
+            if line_len > config.stream_max_line_bytes or (
+                line_len == config.stream_max_line_bytes and not _raw_line_endswith_newline(raw_line)
+            ):
+                raise InferenceError("SSE line cap exceeded", kind="stream_truncated")
+            line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else str(raw_line)
+            if parser.feed_line(line):
+                return parser.finish()
+        except InferenceError:
+            raise
+        except (OSError, ConnectionResetError, http.client.IncompleteRead) as exc:
+            raise InferenceError("truncated chat completion stream", kind="stream_truncated") from exc
+        except UnicodeDecodeError as exc:
+            raise InferenceError("malformed chat completion stream", kind="malformed_response") from exc
+    return parser.finish()
+
+
 def parse_chat_response(raw: bytes) -> list[str]:
+    """Legacy non-streaming parser. Retained for backwards-compatibility tests; runtime uses parse_stream_response."""
     try:
         data = json.loads(raw)
         choices = data["choices"]
         return [choice["message"]["content"] for choice in choices]
     except (KeyError, TypeError, json.JSONDecodeError) as exc:
         raise InferenceError("malformed chat completion response", kind="malformed_response") from exc
+
+
+def parse_stream_response(raw_text: str) -> list[str]:
+    parser = _SSECompletionParser()
+    for raw_line in raw_text.splitlines():
+        if parser.feed_line(raw_line):
+            break
+    return parser.finish()
+
+
+class _SSECompletionParser:
+    def __init__(self) -> None:
+        self.content_parts: list[str] = []
+        self.data_lines: list[str] = []
+        self.saw_done = False
+
+    def feed_line(self, raw_line: str) -> bool:
+        line = raw_line.rstrip("\r\n")
+        if line == "":
+            self._dispatch_buffer()
+            return self.saw_done
+        if line.startswith(":"):
+            return False
+        field, value = self._split_field(line)
+        if field != "data":
+            return False
+        if value == "[DONE]":
+            self._dispatch_buffer()
+            self.saw_done = True
+            return True
+        self.data_lines.append(value)
+        return False
+
+    def finish(self) -> list[str]:
+        if not self.saw_done:
+            raise InferenceError("truncated chat completion stream", kind="stream_truncated")
+        return ["".join(self.content_parts)]
+
+    @staticmethod
+    def _split_field(line: str) -> tuple[str, str]:
+        if ":" not in line:
+            return line, ""
+        field, value = line.split(":", 1)
+        if value.startswith(" "):
+            value = value[1:]
+        return field, value
+
+    def _dispatch_buffer(self) -> None:
+        if not self.data_lines:
+            return
+        payload = "\n".join(self.data_lines)
+        self.data_lines = []
+        self._dispatch_payload(payload)
+
+    def _dispatch_payload(self, payload: str) -> None:
+        if payload == "":
+            return
+        try:
+            chunk = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise InferenceError("truncated chat completion stream", kind="stream_truncated") from exc
+        try:
+            if isinstance(chunk, dict):
+                err = chunk.get("error")
+                if isinstance(err, dict):
+                    _raise_in_band_error(err)
+            choice = chunk["choices"][0]
+            delta = choice.get("delta", {})
+            piece = delta.get("content")
+            if piece is None:
+                return
+            if not isinstance(piece, str):
+                raise InferenceError("malformed chat completion stream", kind="malformed_response")
+            self.content_parts.append(piece)
+        except (KeyError, IndexError, TypeError) as exc:
+            raise InferenceError("malformed chat completion stream", kind="malformed_response") from exc

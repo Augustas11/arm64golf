@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import importlib.util
 from pathlib import Path
@@ -9,7 +10,15 @@ import pytest
 from harness.attest import sign_receipt, verify_receipt
 from harness.store import SEED_MODEL_ID, SEED_PROVIDER_ID
 from harness.loop import main as loop_main
-from harness.inference import InferenceConfig, InferenceError, MacProviderClient, parse_chat_response
+from harness.inference import (
+    BurstThrottledError,
+    InferenceConfig,
+    InferenceError,
+    MacProviderClient,
+    QuotaExhaustedError,
+    parse_chat_response,
+    parse_stream_response,
+)
 from harness import inference as inference_module
 from harness.module import load_problem_module
 from harness.store import Store
@@ -21,6 +30,22 @@ def load_script(path: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _repeating_clock(values: list[float]):
+    iterator = iter(values)
+    last_seen: float | None = None
+
+    def now() -> float:
+        nonlocal last_seen
+        try:
+            last_seen = next(iterator)
+        except StopIteration:
+            if last_seen is None:
+                raise
+        return last_seen
+
+    return now
 
 
 def test_load_sort3_module_and_verify_baseline() -> None:
@@ -196,14 +221,30 @@ def _capture_request_body(monkeypatch, client: MacProviderClient) -> dict:
     captured: list[dict] = []
 
     class FakeResponse:
+        lines = [
+            b'data: {"choices":[{"delta":{"content":"ret\\n"},"finish_reason":null}]}\n',
+            b"\n",
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+            b"\n",
+            b"data: [DONE]\n",
+            b"\n",
+        ]
+
+        def __init__(self) -> None:
+            self.index = 0
+
         def __enter__(self):
             return self
 
         def __exit__(self, *args):
             return None
 
-        def read(self):
-            return b'{"choices":[{"message":{"content":"ret\\n"}}]}'
+        def readline(self, size=-1):
+            if self.index >= len(self.lines):
+                return b""
+            line = self.lines[self.index]
+            self.index += 1
+            return line
 
     def fake_urlopen(req, timeout):
         captured.append(json.loads(req.data.decode("utf-8")))
@@ -217,12 +258,13 @@ def _capture_request_body(monkeypatch, client: MacProviderClient) -> dict:
 
 
 def test_inference_config_caps_max_tokens_at_256(monkeypatch) -> None:
-    """v0.3 pins per-call output at 256 tokens so the gateway/coordinator
-    60s timeout becomes a fallback rather than a load-bearing knob."""
+    """v0.3 pins per-call output at 256 tokens; SSE streaming keeps the
+    gateway header timeout from being a load-bearing knob."""
     assert InferenceConfig().max_tokens == 256
     client = MacProviderClient("test-key", InferenceConfig(n=1))
     body = _capture_request_body(monkeypatch, client)
     assert body["max_tokens"] == 256
+    assert body["stream"] is True
 
 
 def test_inference_config_max_tokens_is_overridable(monkeypatch) -> None:
@@ -240,6 +282,325 @@ def test_parse_chat_response_returns_all_choices() -> None:
 def test_parse_chat_response_rejects_malformed_payload() -> None:
     with pytest.raises(InferenceError):
         parse_chat_response(b'{"choices":[{}]}')
+
+
+def test_parse_stream_response_accumulates_single_choice() -> None:
+    raw = "\n".join(
+        [
+            'data: {"choices":[{"delta":{"content":"cmp x0, x1\\n"},"finish_reason":null}]}',
+            "",
+            'data: {"choices":[{"delta":{"content":"ret\\n"},"finish_reason":null}]}',
+            "",
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+            "",
+            "data: [DONE]",
+            "",
+        ]
+    )
+    assert parse_stream_response(raw) == ["cmp x0, x1\nret\n"]
+
+
+def test_parse_stream_response_reassembles_multiline_sse_event() -> None:
+    raw = "\n".join(
+        [
+            'data: {"choices":',
+            'data: [{"delta":{"content":"cmp"},"finish_reason":null}]}',
+            "",
+            "event: ignored",
+            "id: ignored",
+            "retry: 1000",
+            ": comment",
+            "data: [DONE]",
+            "",
+        ]
+    )
+    assert parse_stream_response(raw) == ["cmp"]
+
+
+def test_parse_stream_response_classifies_truncation() -> None:
+    with pytest.raises(InferenceError) as exc_info:
+        parse_stream_response('data: {"choices":[{"delta":{"content":"cmp"}}]}\n')
+    assert exc_info.value.kind == "stream_truncated"
+
+    with pytest.raises(InferenceError) as bad_json:
+        parse_stream_response('data: {"choices":[{"delta":\n\n')
+    assert bad_json.value.kind == "stream_truncated"
+
+
+def test_parse_stream_response_requires_done_after_finish_reason() -> None:
+    raw = "\n".join(
+        [
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+            "",
+        ]
+    )
+    with pytest.raises(InferenceError) as exc_info:
+        parse_stream_response(raw)
+    assert exc_info.value.kind == "stream_truncated"
+
+
+def test_parse_stream_response_routes_in_band_quota_error() -> None:
+    raw = "\n".join(
+        [
+            'data: {"error":{"code":"quota_exhausted","message":"daily quota exhausted"}}',
+            "",
+            "data: [DONE]",
+            "",
+        ]
+    )
+    with pytest.raises(QuotaExhaustedError) as exc_info:
+        parse_stream_response(raw)
+    assert exc_info.value.kind == "quota_exhausted"
+    assert "daily quota exhausted" in str(exc_info.value)
+
+
+def test_parse_stream_response_routes_in_band_burst_error() -> None:
+    raw = "\n".join(
+        [
+            'data: {"error":{"code":"rate_limited","message":"slow down"}}',
+            "",
+            "data: [DONE]",
+            "",
+        ]
+    )
+    with pytest.raises(BurstThrottledError) as exc_info:
+        parse_stream_response(raw)
+    assert exc_info.value.kind == "burst_throttled"
+    assert "slow down" in str(exc_info.value)
+
+
+def test_parse_stream_response_routes_in_band_server_error_without_code() -> None:
+    raw = "\n".join(
+        [
+            'data: {"error":{"message":"boom"}}',
+            "",
+            "data: [DONE]",
+            "",
+        ]
+    )
+    with pytest.raises(InferenceError) as exc_info:
+        parse_stream_response(raw)
+    assert exc_info.value.kind == "server_error"
+    assert "boom" in str(exc_info.value)
+
+
+def test_parse_stream_response_routes_in_band_server_error_for_unknown_code() -> None:
+    raw = "\n".join(
+        [
+            'data: {"error":{"code":"n_must_be_1","message":"bad n"}}',
+            "",
+            "data: [DONE]",
+            "",
+        ]
+    )
+    with pytest.raises(InferenceError) as exc_info:
+        parse_stream_response(raw)
+    assert exc_info.value.kind == "server_error"
+    assert "bad n" in str(exc_info.value)
+
+
+def test_parse_stream_response_sanitizes_in_band_server_error_message() -> None:
+    server_message = ("a" * 4998) + "\n\x07"
+    assert len(server_message) == 5000
+    raw = "\n".join(
+        [
+            "data: " + json.dumps({"error": {"message": server_message}}),
+            "",
+            "data: [DONE]",
+            "",
+        ]
+    )
+    with pytest.raises(InferenceError) as exc_info:
+        parse_stream_response(raw)
+    message = str(exc_info.value)
+    assert exc_info.value.kind == "server_error"
+    assert len(message) <= 250
+    assert not any((ord(char) < 32 or ord(char) == 127) for char in message)
+
+
+def test_stream_truncation_surfaces_from_client(monkeypatch) -> None:
+    class FakeResponse:
+        lines = [
+            b'data: {"choices":[{"delta":{"content":"cmp"},"finish_reason":null}]}\n',
+        ]
+
+        def __init__(self) -> None:
+            self.index = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def readline(self, size=-1):
+            if self.index >= len(self.lines):
+                return b""
+            line = self.lines[self.index]
+            self.index += 1
+            return line
+
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", lambda req, timeout: FakeResponse())
+    with pytest.raises(InferenceError) as exc_info:
+        MacProviderClient("test-key", InferenceConfig(n=1)).complete([{"role": "user", "content": "candidate?"}])
+    assert exc_info.value.kind == "stream_truncated"
+
+
+def test_stream_total_deadline_surfaces_from_client(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def readline(self, size=-1):
+            return b'data: {"choices":[{"delta":{"content":"cmp"},"finish_reason":null}]}\n'
+
+    monkeypatch.setattr(inference_module.time, "monotonic", _repeating_clock([0.0, 0.0, 2.0]))
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", lambda req, timeout: FakeResponse())
+    config = InferenceConfig(n=1, stream_total_timeout_s=1.0, stream_idle_timeout_s=10.0)
+    with pytest.raises(InferenceError) as exc_info:
+        MacProviderClient("test-key", config).complete([{"role": "user", "content": "candidate?"}])
+    assert exc_info.value.kind == "stream_truncated"
+    assert "total deadline" in str(exc_info.value)
+
+
+def test_stream_total_deadline_surfaces_when_readline_times_out(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def readline(self, size=-1):
+            raise TimeoutError("read timed out")
+
+    monkeypatch.setattr(inference_module.time, "monotonic", _repeating_clock([0.0, 0.0, 0.0, 0.75]))
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", lambda req, timeout: FakeResponse())
+    config = InferenceConfig(n=1, stream_total_timeout_s=0.5, stream_idle_timeout_s=10.0)
+    with pytest.raises(InferenceError) as exc_info:
+        MacProviderClient("test-key", config).complete([{"role": "user", "content": "candidate?"}])
+    assert exc_info.value.kind == "stream_truncated"
+    assert "total deadline" in str(exc_info.value)
+
+
+def test_stream_idle_timeout_surfaces_from_client(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def readline(self, size=-1):
+            return b'data: {"choices":[{"delta":{"content":"cmp"},"finish_reason":null}]}\n'
+
+    monkeypatch.setattr(inference_module.time, "monotonic", _repeating_clock([0.0, 0.0, 2.0]))
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", lambda req, timeout: FakeResponse())
+    config = InferenceConfig(n=1, stream_total_timeout_s=10.0, stream_idle_timeout_s=1.0)
+    with pytest.raises(InferenceError) as exc_info:
+        MacProviderClient("test-key", config).complete([{"role": "user", "content": "candidate?"}])
+    assert exc_info.value.kind == "stream_idle_timeout"
+
+
+def test_retry_sleep_respects_stream_total_deadline(monkeypatch) -> None:
+    slept: list[float] = []
+
+    def fake_urlopen(req, timeout):
+        raise inference_module.urllib.error.HTTPError(
+            req.full_url,
+            429,
+            "too many requests",
+            {},
+            io.BytesIO(b'{"error":{"code":"rate_limited"}}'),
+        )
+
+    monkeypatch.setattr(inference_module.time, "monotonic", _repeating_clock([0.0, 0.0, 0.75]))
+    monkeypatch.setattr(inference_module.time, "sleep", lambda seconds: slept.append(seconds))
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", fake_urlopen)
+    config = InferenceConfig(n=1, max_retries=1, stream_total_timeout_s=1.0, stream_idle_timeout_s=10.0)
+    with pytest.raises(InferenceError) as exc_info:
+        MacProviderClient("test-key", config).complete([{"role": "user", "content": "candidate?"}])
+    assert exc_info.value.kind == "stream_truncated"
+    assert slept == []
+
+
+def test_stream_read_oserror_surfaces_as_stream_truncated(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def readline(self, size=-1):
+            raise ConnectionResetError("reset")
+
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", lambda req, timeout: FakeResponse())
+    with pytest.raises(InferenceError) as exc_info:
+        MacProviderClient("test-key", InferenceConfig(n=1)).complete([{"role": "user", "content": "candidate?"}])
+    assert exc_info.value.kind == "stream_truncated"
+
+
+def test_stream_decode_error_surfaces_as_malformed_response(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def readline(self, size=-1):
+            return b"\xff\n"
+
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", lambda req, timeout: FakeResponse())
+    with pytest.raises(InferenceError) as exc_info:
+        MacProviderClient("test-key", InferenceConfig(n=1)).complete([{"role": "user", "content": "candidate?"}])
+    assert exc_info.value.kind == "malformed_response"
+
+
+def test_stream_max_bytes_cap_surfaces_from_client(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def readline(self, size=-1):
+            return b'data: {"choices":[{"delta":{"content":"cmp"},"finish_reason":null}]}\n'
+
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", lambda req, timeout: FakeResponse())
+    config = InferenceConfig(n=1, stream_max_bytes=10)
+    with pytest.raises(InferenceError) as exc_info:
+        MacProviderClient("test-key", config).complete([{"role": "user", "content": "candidate?"}])
+    assert exc_info.value.kind == "stream_truncated"
+    assert "byte cap" in str(exc_info.value)
+
+
+def test_stream_max_line_cap_surfaces_from_client(monkeypatch) -> None:
+    observed_sizes: list[int] = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def readline(self, size=-1):
+            observed_sizes.append(size)
+            return b"x" * size
+
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", lambda req, timeout: FakeResponse())
+    config = InferenceConfig(n=1, stream_max_line_bytes=8)
+    with pytest.raises(InferenceError) as exc_info:
+        MacProviderClient("test-key", config).complete([{"role": "user", "content": "candidate?"}])
+    assert observed_sizes == [8]
+    assert exc_info.value.kind == "stream_truncated"
+    assert "line cap" in str(exc_info.value)
 
 
 def test_store_exports_leaderboard(tmp_path: Path) -> None:

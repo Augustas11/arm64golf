@@ -17,6 +17,10 @@ EXPECTED_TEMPERATURE = 0.7
 EXPECTED_TOP_P = 0.95
 EXPECTED_N = 8
 EXPECTED_MAX_TOKENS = 256
+EXPECTED_STREAM_TOTAL_TIMEOUT_S = 60.0
+EXPECTED_STREAM_IDLE_TIMEOUT_S = 10.0
+EXPECTED_STREAM_MAX_BYTES = 4 * 1024 * 1024
+EXPECTED_STREAM_MAX_LINE_BYTES = 64 * 1024
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -38,14 +42,30 @@ def header_value(headers: dict[str, str], name: str) -> str:
 
 
 class FakeResponse:
+    lines = [
+        b'data: {"choices":[{"delta":{"content":"cmp x0, x1\\n"},"finish_reason":null}]}\n',
+        b"\n",
+        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+        b"\n",
+        b"data: [DONE]\n",
+        b"\n",
+    ]
+
+    def __init__(self) -> None:
+        self.index = 0
+
     def __enter__(self):
         return self
 
     def __exit__(self, *args: object) -> None:
         return None
 
-    def read(self) -> bytes:
-        return b'{"choices":[{"message":{"content":"cmp x0, x1\\n"}}]}'
+    def readline(self, size: int = -1) -> bytes:
+        if self.index >= len(self.lines):
+            return b""
+        line = self.lines[self.index]
+        self.index += 1
+        return line
 
 
 def validate_defaults(errors: list[str]) -> None:
@@ -62,6 +82,26 @@ def validate_defaults(errors: list[str]) -> None:
     require(
         config.max_tokens == EXPECTED_MAX_TOKENS,
         "InferenceConfig.max_tokens must default to 256 (per-call latency cap)",
+        errors,
+    )
+    require(
+        config.stream_total_timeout_s == EXPECTED_STREAM_TOTAL_TIMEOUT_S,
+        "InferenceConfig.stream_total_timeout_s must default to 60 seconds",
+        errors,
+    )
+    require(
+        config.stream_idle_timeout_s == EXPECTED_STREAM_IDLE_TIMEOUT_S,
+        "InferenceConfig.stream_idle_timeout_s must default to 10 seconds",
+        errors,
+    )
+    require(
+        config.stream_max_bytes == EXPECTED_STREAM_MAX_BYTES,
+        "InferenceConfig.stream_max_bytes must default to 4 MiB",
+        errors,
+    )
+    require(
+        config.stream_max_line_bytes == EXPECTED_STREAM_MAX_LINE_BYTES,
+        "InferenceConfig.stream_max_line_bytes must default to 64 KiB",
         errors,
     )
 
@@ -111,6 +151,11 @@ def validate_request_shape(errors: list[str]) -> None:
     first = captured[0]
     require(first.get("url") == EXPECTED_ENDPOINT, "client must POST to the pinned MacProvider endpoint", errors)
     require(first.get("method") == "POST", "client must use POST", errors)
+    require(
+        first.get("timeout") == EXPECTED_STREAM_IDLE_TIMEOUT_S,
+        f"urlopen timeout must equal stream_idle_timeout_s={EXPECTED_STREAM_IDLE_TIMEOUT_S}",
+        errors,
+    )
     headers = first.get("headers", {})
     require(isinstance(headers, dict), "captured headers must be a dict", errors)
     if isinstance(headers, dict):
@@ -137,6 +182,7 @@ def validate_request_shape(errors: list[str]) -> None:
             f"request body max_tokens must be {EXPECTED_MAX_TOKENS} (per-call latency cap)",
             errors,
         )
+        require(body.get("stream") is True, "request body stream must be true for SSE completions", errors)
         require(body.get("messages") == [{"role": "user", "content": "candidate?"}], "request body messages must pass through", errors)
 
 
