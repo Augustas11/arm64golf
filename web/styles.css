@@ -242,7 +242,54 @@ section > p:last-of-type {
   font-weight: 600;
 }
 
+.track-state {
+  margin-left: 6px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.track-state.gated {
+  color: var(--warn-ink);
+}
+
+.gate-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.gate-list li {
+  color: var(--ink-soft);
+}
+
+.gate-marker {
+  display: inline-block;
+  min-width: 32px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gate-marker.done {
+  color: var(--ink);
+}
+
 /* ---------- Frontier table ---------- */
+.subhead {
+  margin: 24px 0 8px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
 .frontier-table {
   width: 100%;
   margin: 8px 0 22px;
@@ -269,6 +316,22 @@ section > p:last-of-type {
 
 .frontier-table tbody tr:last-child td {
   border-bottom: 0;
+}
+
+.pairs-table {
+  min-width: 720px;
+}
+
+.pairs-table td.score {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+}
+
+.pairs-table .secondary {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* ---------- Methodological note ---------- */
