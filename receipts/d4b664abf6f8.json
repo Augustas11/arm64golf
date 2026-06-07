@@ -10,14 +10,14 @@
       },
       "kind": "reference-harness"
     },
-    "candidate_hash": "57b2aa2363428e955d361e45d4204a9c6bf9cf205fe32ec94d4ed4813ac5a2ff",
+    "candidate_hash": "d4b664abf6f8c162d3312728c401d090ee21096be11899f2a9415e269c7e949e",
     "harness_version": "0.2.0",
     "model_id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
     "problem_id": "sort3-arm64",
     "provider_id": "air5",
-    "score": 12,
-    "ts": "2026-06-07T11:28:20Z"
+    "score": 16,
+    "ts": "2026-06-07T11:14:55Z"
   },
   "public_key": "3q54g41TanQ6C+c841vhFQZg1Vb4xUJG+bWh1E2ZPbk=",
-  "signature": "m4nXOI14pm6cMd3/jnjXOQ4dlg2KHg6R0vVxOQynHl893AZtPFIZwAzBCCtxHuRK0F3BLT2nGHuDCB1LkHtHCg=="
+  "signature": "4INPP/Qhc40kU4aaj/6PvzVlNK/YkT1uCp/yEIBTyHMDLFtgA60k+G/Cjdfq9zMSAo/FXBNxgM1fnvliDPCrDw=="
 }
