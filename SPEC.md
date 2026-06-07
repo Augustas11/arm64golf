@@ -270,7 +270,8 @@ the mapping in `AIR5_OPERATOR_NOTE.md` and receipts before running the search.
 
 ### 4.4 Request Shape
 
-The request body follows OpenAI chat-completions shape:
+The request body follows OpenAI chat-completions shape and must request SSE
+streaming:
 
 ```json
 {
@@ -281,13 +282,32 @@ The request body follows OpenAI chat-completions shape:
   ],
   "temperature": 0.7,
   "top_p": 0.95,
-  "n": 8
+  "n": 1,
+  "max_tokens": 256,
+  "stream": true
 }
 ```
+
+The harness configuration still defaults to `"n": 8` candidate responses per
+round, but the MacProvider gateway rejects `n > 1`, so the client fans that out
+into sequential single-completion requests with `n: 1`.
 
 Authentication uses the operator's MacProvider API key.
 
 ### 4.5 Failure Modes
+
+v0.2 switches the success path to SSE streaming for the clean-default-config
+canary: a 10s gateway header timeout and a 10s WebSocket write timeout, without
+operator-specific timeout tuning. The client still keeps bounded streaming
+guards: `stream_total_timeout_s` defaults to 60s, `stream_idle_timeout_s`
+defaults to 10s, `stream_max_bytes` defaults to 4 MiB, and
+`stream_max_line_bytes` defaults to 64 KiB.
+
+Streaming failures use stable attempt kinds. `stream_idle_timeout` means the
+server was reachable but stopped making line progress; `stream_truncated` means
+the stream exceeded total/byte/line bounds or ended before `data: [DONE]`;
+top-level in-band SSE `error` chunks become quota/burst errors when their code
+matches those classes, or `server_error` for other upstream error codes.
 
 Provider offline:
 
@@ -311,6 +331,12 @@ Malformed response:
 
 - record parse failure
 - continue to next response when possible
+
+Stream truncated:
+
+- record a `stream_truncated` attempt failure
+- continue the client-side fan-out when possible
+- keep it distinct from malformed response parsing
 
 Rate limit:
 
