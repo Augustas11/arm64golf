@@ -53,23 +53,79 @@ SPEC_NEEDLES = [
 ]
 
 README_NEEDLES = [
-    "Open-weight coding models on Apple Silicon search the ARM64 sort/hash frontier. Powered by the MacProvider network.",
-    "Live leaderboard:",
-    "private test preview pending",
-    "Public launch is intentionally",
-    "## What This Is",
-    "AlphaDev",
-    "## How To Participate",
-    "As a Mac owner",
+    "*arm64golf is an open, signed leaderboard for the shortest ARM64 routines.*",
+    "Live as of 2026-06-08. The challenge is live",
+    "## Why this matters",
+    "ARM64 powers iPhones, M-series Macs, modern Androids, AWS Graviton servers",
+    "AlphaDev (DeepMind, 2023)",
+    "No equivalent public ARM64 result exists",
+    "## What we'll deliver",
+    "A public, append-only log of shortest ARM64 implementations",
+    "deterministic verifier and an ed25519 signature",
+    "Citeable, immutable hashes that a paper or libc patch can reference",
+    "Today the leaderboard is at sort3 with a current best of 12 instructions",
+    "AlphaDev never published an ARM64 sort3 number",
+    "## How to join",
+    "### Host a Mac",
     "https://github.com/Augustas11/macprovider#for-providers",
-    "As a contestant",
-    "public submissions are not open in v0.1",
-    "https://github.com/Augustas11/arm64golf/issues",
-    "## Architecture",
-    "X-MacProvider-Provider: air5",
-    "ed25519 receipts",
+    "### Write a routine",
+    "https://github.com/Augustas11/arm64golf/issues/new?template=open-submission.md",
+    "submissions/CONTRIBUTING.md",
+    "### Contribute a prompt",
+    "prompts/CONTRIBUTING.md",
+    "## How verification works",
+    "deny-by-default macOS `sandbox-exec` profile against 1200 deterministic test cases",
+    "receipts/PUBKEY",
+    "## Run it yourself",
+    "git clone https://github.com/Augustas11/arm64golf.git",
+    ".venv/bin/pytest tests/test_harness.py -q",
+    "python3 -m http.server 8765 --directory web",
+    "cat web/public/leaderboard.json",
+    ".venv/bin/python bin/verify-receipt.py <receipt-path>",
+    ".venv/bin/python bin/validate-open-submission-flow.py --json",
+    "MACPROVIDER_API_KEY",
+    "--allow-marketplace-attribution",
+    "## Links",
+    "[SPEC.md](SPEC.md)",
+    "[REPORT.md](REPORT.md)",
+    "[bin/](bin/)",
     "## License",
     "MIT",
+]
+
+README_SECTIONS = [
+    "# arm64golf",
+    "## Why this matters",
+    "## What we'll deliver",
+    "## How to join",
+    "### Host a Mac",
+    "### Write a routine",
+    "### Contribute a prompt",
+    "## How verification works",
+    "## Run it yourself",
+    "## Links",
+    "## License",
+]
+
+README_FORBIDDEN_INTERNAL_VOCABULARY = [
+    "Private test preview",
+    "private test",
+    "private preview",
+    "v0.1 proof of concept",
+    "public submissions are not open",
+    "pinned to air5",
+    "eventual public research leaderboard",
+    "Stage A",
+    "Stage B",
+    "Stage C",
+    "G1",
+    "G2",
+    "G3",
+    "G4",
+    "2 providers",
+    "2 models",
+    "currently 6 pairs",
+    "calibration",
 ]
 
 
@@ -124,20 +180,27 @@ def validate_readme(path: Path = REPO_ROOT / "README.md") -> list[str]:
         return errors
 
     text = path.read_text()
+    section_order(text, README_SECTIONS, "README.md", errors)
     require_needles(text, README_NEEDLES, "README.md", errors)
+    line_count = len(text.splitlines())
+    require(line_count <= 150, f"README.md should stay concise, got {line_count} lines", errors)
+    readme_text_lower = text.lower()
+    leaked_terms = [
+        term for term in README_FORBIDDEN_INTERNAL_VOCABULARY if term.lower() in readme_text_lower
+    ]
+    require(
+        not leaked_terms,
+        "README.md leaks internal vocabulary: " + ", ".join(leaked_terms),
+        errors,
+    )
     require(
         not re.search(r"\b(rediscovered|found|discovered)\s+(a\s+)?1[67]-instruction", text, re.IGNORECASE),
         "README.md must not claim a 16/17-instruction result before the live run proves it",
         errors,
     )
     require(
-        "currently in private test" in text,
-        "README.md must clearly describe the current private-test state",
-        errors,
-    )
-    require(
-        "public web page after launch approval" in text,
-        "README.md architecture must defer public launch until approval",
+        "libc has adopted" not in text.lower() and "compiler vendors have adopted" not in text.lower(),
+        "README.md must not claim compiler or libc adoption",
         errors,
     )
     return errors

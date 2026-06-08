@@ -200,6 +200,30 @@ def test_validate_docs_rejects_premature_readme_result_claim(tmp_path: Path) -> 
     assert any("must not claim" in error for error in errors)
 
 
+@pytest.mark.parametrize(
+    "term",
+    [
+        "Private test",
+        "PRIVATE TEST",
+        "Public submissions are not open",
+        "PUBLIC SUBMISSIONS ARE NOT OPEN",
+        "Stage A",
+        "sTaGe A",
+        "V0.1 proof of concept",
+        "v0.1 PROOF OF CONCEPT",
+    ],
+)
+def test_validate_docs_rejects_forbidden_readme_vocabulary_case_insensitively(
+    tmp_path: Path, term: str
+) -> None:
+    script = load_script("bin/validate-docs.py")
+    readme = tmp_path / "README.md"
+    readme.write_text(Path("README.md").read_text() + f"\n{term} is ready.\n")
+
+    errors = script.validate_readme(readme)
+    assert any("README.md leaks internal vocabulary" in error for error in errors)
+
+
 def test_validate_report_accepts_current_report() -> None:
     script = load_script("bin/validate-report.py")
     assert script.validate() == []
@@ -1736,23 +1760,7 @@ def test_preflight_rejects_unexpected_origin() -> None:
     assert result["summary"] == "origin does not match expected private test repo"
 
 
-def test_deliverable_audit_requires_private_repo(monkeypatch) -> None:
-    script = load_script("bin/audit-deliverables.py")
-
-    def fake_run(cmd, timeout_s=10.0):
-        if cmd == ["git", "remote", "get-url", "origin"]:
-            return 0, "https://github.com/Augustas11/arm64golf.git"
-        if cmd == ["gh", "repo", "view", "Augustas11/arm64golf", "--json", "nameWithOwner,url,visibility"]:
-            return 0, '{"nameWithOwner":"Augustas11/arm64golf","url":"https://github.com/Augustas11/arm64golf","visibility":"PRIVATE"}'
-        raise AssertionError(cmd)
-
-    monkeypatch.setattr(script, "run", fake_run)
-    result = script.git_repo_status()
-    assert result.status == "complete"
-    assert "private test repo" in result.summary
-
-
-def test_deliverable_audit_rejects_public_repo(monkeypatch) -> None:
+def test_deliverable_audit_requires_public_repo(monkeypatch) -> None:
     script = load_script("bin/audit-deliverables.py")
 
     def fake_run(cmd, timeout_s=10.0):
@@ -1764,8 +1772,24 @@ def test_deliverable_audit_rejects_public_repo(monkeypatch) -> None:
 
     monkeypatch.setattr(script, "run", fake_run)
     result = script.git_repo_status()
+    assert result.status == "complete"
+    assert "public launch verified" in result.summary
+
+
+def test_deliverable_audit_rejects_private_repo(monkeypatch) -> None:
+    script = load_script("bin/audit-deliverables.py")
+
+    def fake_run(cmd, timeout_s=10.0):
+        if cmd == ["git", "remote", "get-url", "origin"]:
+            return 0, "https://github.com/Augustas11/arm64golf.git"
+        if cmd == ["gh", "repo", "view", "Augustas11/arm64golf", "--json", "nameWithOwner,url,visibility"]:
+            return 0, '{"nameWithOwner":"Augustas11/arm64golf","url":"https://github.com/Augustas11/arm64golf","visibility":"PRIVATE"}'
+        raise AssertionError(cmd)
+
+    monkeypatch.setattr(script, "run", fake_run)
+    result = script.git_repo_status()
     assert result.status == "failed"
-    assert "PRIVATE" in result.summary
+    assert "PUBLIC" in result.summary
 
 
 def test_deliverable_audit_offline_mode_skips_visibility(monkeypatch) -> None:

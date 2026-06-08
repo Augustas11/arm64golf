@@ -1,45 +1,89 @@
 # arm64golf
 
-**Open-weight coding models on Apple Silicon search the ARM64 sort/hash frontier. Powered by the MacProvider network.**
+*arm64golf is an open, signed leaderboard for the shortest ARM64 routines.*
 
-Live leaderboard: private test preview pending. Public launch is intentionally
-deferred until the operator approves opening `arm64golf` to everyone.
+Live as of 2026-06-08. The challenge is live — host a Mac, write a routine, or contribute a prompt.
 
-## What This Is
+## Why this matters
 
-`arm64golf` is an eventual public research leaderboard, currently in private test, where open-weight coding models served by MacProvider try to discover shorter ARM64 assembly routines than published references. The v0.1 proof of concept starts with one problem, `sort3-arm64`: sort three signed 64-bit integers in registers. It is inspired by Google DeepMind's AlphaDev work, which discovered shorter x86 sorting routines and reports `Sort3AlphaDev` at 17 instructions. This project is deliberately narrower: it asks whether an open-weight 7B coder model running on Apple Silicon can generate correct ARM64 mutations, rediscover a 17-instruction ARM64 `sort3`, and expose useful frontier signal toward 16 instructions.
+ARM64 powers iPhones, M-series Macs, modern Androids, AWS Graviton servers — an enormous fraction of all computation. Fundamental routines such as `sort3`, `sort4`, fixed-size hash, and small `memcmp` execute trillions of times a day; every instruction saved compounds.
 
-## How To Participate
+AlphaDev (DeepMind, 2023) demonstrated learned search can find shorter implementations than the published references — for x86 only, with closed production artifacts. No equivalent public ARM64 result exists. arm64golf is the open answer: a public, verifiable, signed record of the shortest known ARM64 implementations, reproducible by anyone with the public key and the harness source.
 
-**As a Mac owner:** join MacProvider and turn an Apple Silicon Mac into an MLX inference provider. Start at the MacProvider provider onboarding flow: <https://github.com/Augustas11/macprovider#for-providers>.
+## What we'll deliver
 
-**As a contestant:** public submissions are not open in v0.1. The only contestant is the harness itself, pinned to `air5` and `mlx-community/Qwen2.5-Coder-7B-Instruct-4bit`. Open an issue at <https://github.com/Augustas11/arm64golf/issues> to register interest in future contestant intake after launch.
+- A public, append-only log of shortest ARM64 implementations of fundamental routines, each bound to a deterministic verifier and an ed25519 signature
+- A growing problem set — sort3 today; sort4, sort5, fixed-size hash, small memcmp on the same framework
+- Citeable, immutable hashes that a paper or libc patch can reference
+- Routines compiler vendors and libc maintainers can evaluate directly, with a verified provenance trail
+- A trajectory toward the first open ARM64 equivalent of AlphaDev's published x86 results
 
-## Architecture
+Today the leaderboard is at sort3 with a current best of 12 instructions. AlphaDev never published an ARM64 sort3 number; the comparable x86 figure is 17. The clang -O3 ARM64 baseline is 18. Whether 11 (or lower) is reachable is genuinely open.
 
-```text
-Qwen2.5-Coder-7B on air5
-        |
-        | OpenAI-compatible chat completions
-        v
-search harness -> sandboxed sort3 verifier -> SQLite store
-        |                    |
-        |                    v
-        |              ed25519 receipt
-        v
-static leaderboard JSON -> private preview now, public web page after launch approval
+## How to join
+
+### Host a Mac
+
+If you have an Apple Silicon Mac with idle hours and at least 8 GB of unified memory, you become research infrastructure the moment you join. Your provider id is signed into every receipt your node produces, in the public log, forever.
+
+→ [Run a provider on MacProvider](https://github.com/Augustas11/macprovider#for-providers)
+
+### Write a routine
+
+If you can write ARM64 assembly that sorts in fewer than 12 instructions, submit it. The operator runs the deterministic verifier and signs the result.
+
+→ [Submit a routine](https://github.com/Augustas11/arm64golf/issues/new?template=open-submission.md)  
+→ [How submissions work](https://github.com/Augustas11/arm64golf/blob/main/submissions/CONTRIBUTING.md)
+
+### Contribute a prompt
+
+If you find a prompt that surfaces structure the existing templates miss, contribute it. The operator registers the template and signs the `template_id` into every receipt the template produces.
+
+→ [Contribute a prompt template](https://github.com/Augustas11/arm64golf/blob/main/prompts/CONTRIBUTING.md)
+
+## How verification works
+
+Each submitted ARM64 routine is assembled into a native binary and executed under a deny-by-default macOS `sandbox-exec` profile against 1200 deterministic test cases. Any failure rejects the candidate. A passing candidate is hashed, scored by static instruction count after normalization, and bound into an ed25519 receipt. Anyone with `receipts/PUBKEY` can independently re-derive any score on the leaderboard from the recorded receipt and the candidate bytes.
+
+## Run it yourself
+
+```bash
+git clone https://github.com/Augustas11/arm64golf.git
+cd arm64golf
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
-The harness pins inference to `https://api.streamvc.live/v1/chat/completions` with `X-MacProvider-Provider: air5`. Candidates are assembled into native ARM64 verifier binaries and run locally under a deny-by-default macOS `sandbox-exec` profile; `air5` only serves inference. Verified candidates receive ed25519 receipts binding problem, candidate hash, score, model, provider, harness version, and timestamp.
+```bash
+.venv/bin/pytest tests/test_harness.py -q
+```
 
-## Status
+```bash
+python3 -m http.server 8765 --directory web
+# http://localhost:8765
+```
 
-v0.1 is a bootstrap PoC. The success thresholds are:
+```bash
+cat web/public/leaderboard.json
+```
 
-- PASS-A: one syntactically valid ARM64 candidate verifies on 1000+ tests within 200 evaluated candidate responses.
-- PASS-B: a 17-instruction verified ARM64 `sort3` appears within 10,000 evaluated candidate responses.
-- PASS-C: a 16-instruction verified candidate appears, or near-best candidates show non-trivial structural diversity after PASS-B.
-- FAIL: none of the above within 10,000 evaluated candidate responses, with failure modes documented in `REPORT.md`.
+```bash
+.venv/bin/python bin/verify-receipt.py <receipt-path>
+```
+
+```bash
+.venv/bin/python bin/validate-open-submission-flow.py --json
+```
+
+Running the marketplace harness in `harness/loop.py` requires `MACPROVIDER_API_KEY`. Explicit marketplace attribution for provider/model pairs is enabled with `--allow-marketplace-attribution`.
+
+## Links
+
+- [SPEC.md](SPEC.md) — full architecture
+- [REPORT.md](REPORT.md) — current results and Phase 4 marketplace finding
+- [prompts/CONTRIBUTING.md](prompts/CONTRIBUTING.md) — Track B, prompt templates
+- [submissions/CONTRIBUTING.md](submissions/CONTRIBUTING.md) — Track C, open submissions
+- [bin/](bin/) — operator tools
 
 ## License
 
