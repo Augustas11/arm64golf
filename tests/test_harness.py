@@ -203,11 +203,13 @@ def test_validate_docs_rejects_premature_readme_result_claim(tmp_path: Path) -> 
 @pytest.mark.parametrize(
     "needle",
     [
-        "Compilers cannot find their shortest forms",
-        "no public source today",
-        "shortest ARM64 sort3 verified and signed into this public log",
-        "It does not claim",
-        "Have you seen shorter? Submit it",
+        "current shortest verified ARM64 sort3",
+        "17 — AlphaDev x86 reference (Nature 618, 2023)",
+        "18 — clang -O3 ARM64 baseline",
+        "arm64golf current best",
+        "Best verified per (provider, model, template)",
+        "Best-known instruction count over time",
+        "Have you seen shorter? Submit it.",
         "sort4",
         "sort5",
         "fixed-size hash",
@@ -215,10 +217,11 @@ def test_validate_docs_rejects_premature_readme_result_claim(tmp_path: Path) -> 
         "leading-zero count",
     ],
 )
-def test_validate_docs_rejects_missing_required_readme_trajectory_phrase(
+def test_validate_docs_rejects_missing_required_readme_lead_phrase(
     tmp_path: Path, needle: str
 ) -> None:
     script = load_script("bin/validate-docs.py")
+    assert needle in script.REQUIRED_README_LEAD_PHRASES
     readme_text = Path("README.md").read_text()
     assert needle in readme_text
     readme = tmp_path / "README.md"
@@ -235,25 +238,26 @@ def test_validate_docs_rejects_missing_required_readme_trajectory_phrase(
         ("web", "bin/validate-web.py"),
     ],
 )
-def test_validators_reject_missing_honesty_section_marker(
+def test_validators_reject_missing_compressed_honesty_note(
     tmp_path: Path, surface: str, script_path: str
 ) -> None:
     script = load_script(script_path)
+    phrase = "Have you seen shorter? Submit it."
 
     if surface == "docs":
         readme_text = Path("README.md").read_text()
-        assert "It does not claim" in readme_text
+        assert phrase in readme_text
         readme = tmp_path / "README.md"
-        readme.write_text(readme_text.replace("It does not claim", ""))
+        readme.write_text(readme_text.replace(phrase, ""))
 
         errors = script.validate_readme(readme)
-        assert any("README.md missing required text: It does not claim" in error for error in errors)
+        assert any(f"README.md missing required text: {phrase}" in error for error in errors)
     else:
         web_dir = tmp_path / "web"
         (web_dir / "public").mkdir(parents=True)
         html = Path("web/index.html").read_text()
-        assert "It does not claim" in html
-        (web_dir / "index.html").write_text(html.replace("It does not claim", ""))
+        assert phrase in html
+        (web_dir / "index.html").write_text(html.replace(phrase, ""))
         (web_dir / "app.js").write_text(Path("web/app.js").read_text())
         (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
         (web_dir / "public" / "leaderboard.json").write_text(
@@ -261,7 +265,7 @@ def test_validators_reject_missing_honesty_section_marker(
         )
 
         errors = script.validate(web_dir)
-        assert any("public lead missing required phrases: It does not claim" in error for error in errors)
+        assert any(f"public lead missing required phrases: {phrase}" in error for error in errors)
 
 
 @pytest.mark.parametrize(
@@ -2089,6 +2093,25 @@ def test_validate_web_requires_public_lead_phrases(tmp_path: Path) -> None:
         (web_dir / "index.html").write_text(broken)
         errors = script.validate(web_dir)
         assert any(f"public lead missing required phrases: {phrase}" in error for error in errors)
+
+
+@pytest.mark.parametrize("required_id", ["improvement-chart", "trajectory-chart"])
+def test_validate_web_requires_chart_container_ids(tmp_path: Path, required_id: str) -> None:
+    script = load_script("bin/validate-web.py")
+    assert required_id in script.REQUIRED_HTML_IDS
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    html = Path("web/index.html").read_text()
+    assert f'id="{required_id}"' in html
+    (web_dir / "index.html").write_text(
+        html.replace(f'id="{required_id}"', f'data-removed-id="{required_id}"')
+    )
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    (web_dir / "public" / "leaderboard.json").write_text(Path("web/public/leaderboard.json").read_text())
+
+    errors = script.validate(web_dir)
+    assert any(f"web/index.html is missing required ids: {required_id}" in error for error in errors)
 
 
 @pytest.mark.parametrize(

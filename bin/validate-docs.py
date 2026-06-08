@@ -53,35 +53,25 @@ SPEC_NEEDLES = [
 ]
 
 README_NEEDLES = [
-    "*arm64golf is an open, signed leaderboard for the shortest ARM64 routines.*",
-    "Live as of 2026-06-08. The challenge is live",
-    "## Why this matters",
-    "That gap is what arm64golf exists to close",
-    "## What verified means here",
-    "Every entry passes a deterministic 1200-case verifier",
+    "Open as of 2026-06-08. The challenge is live",
+    "## Current surface",
+    "## Best verified per provider/model/template",
+    "## Trajectory",
+    "## Score history",
+    "## How it works",
+    "Submitted ARM64 assembly is assembled",
     "Replay any claim with `bin/verify-receipt.py`",
-    "same normalizer in `harness/store.py`",
-    "AlphaDev published x86 records in 2023 but no ARM64 numbers",
-    "open public log itself",
-    "## What we'll deliver",
-    "A growing reference set of shortest-known ARM64 implementations",
-    "sort3 today at 12 instructions; can 11 be reached",
-    "Small `memcmp` / `memcpy` / `strlen` variants",
-    "order in which these problems get added depends on contributor interest and demand",
-    "## How to join",
+    "## Will you find a shorter routine?",
+    "Compilers cannot find their shortest forms",
+    "There is no public source today",
+    "## Participate",
     "### Host a Mac",
     "https://github.com/Augustas11/macprovider#for-providers",
     "### Write a routine",
-    "Your hash on the public log forever",
-    "if you've seen a shorter ARM64 implementation in a paper",
-    "credit attached to the hash",
     "https://github.com/Augustas11/arm64golf/issues/new?template=open-submission.md",
-    "submissions/CONTRIBUTING.md",
     "### Contribute a prompt",
     "prompts/CONTRIBUTING.md",
-    "## How verification works",
-    "deny-by-default macOS `sandbox-exec` profile against 1200 deterministic test cases",
-    "receipts/PUBKEY",
+    "## What's next",
     "## Run it yourself",
     "git clone https://github.com/Augustas11/arm64golf.git",
     ".venv/bin/pytest tests/test_harness.py -q",
@@ -99,12 +89,14 @@ README_NEEDLES = [
     "MIT",
 ]
 
-REQUIRED_README_TRAJECTORY_PHRASES = [
-    "Compilers cannot find their shortest forms",
-    "no public source today",
-    "shortest ARM64 sort3 verified and signed into this public log",
-    "It does not claim",
-    "Have you seen shorter? Submit it",
+REQUIRED_README_LEAD_PHRASES = [
+    "current shortest verified ARM64 sort3",
+    "17 — AlphaDev x86 reference (Nature 618, 2023)",
+    "18 — clang -O3 ARM64 baseline",
+    "arm64golf current best",
+    "Best verified per (provider, model, template)",
+    "Best-known instruction count over time",
+    "Have you seen shorter? Submit it.",
     "sort4",
     "sort5",
     "fixed-size hash",
@@ -124,14 +116,17 @@ README_NEGATION_MARKERS = [
 
 README_SECTIONS = [
     "# arm64golf",
-    "## Why this matters",
-    "## What verified means here",
-    "## What we'll deliver",
-    "## How to join",
+    "## Current surface",
+    "## Best verified per provider/model/template",
+    "## Trajectory",
+    "## Score history",
+    "## How it works",
+    "## Will you find a shorter routine?",
+    "## Participate",
     "### Host a Mac",
     "### Write a routine",
     "### Contribute a prompt",
-    "## How verification works",
+    "## What's next",
     "## Run it yourself",
     "## Links",
     "## License",
@@ -262,7 +257,7 @@ def validate_readme(path: Path = REPO_ROOT / "README.md") -> list[str]:
     text = path.read_text()
     section_order(text, README_SECTIONS, "README.md", errors)
     require_needles(text, README_NEEDLES, "README.md", errors)
-    require_needles(text, REQUIRED_README_TRAJECTORY_PHRASES, "README.md", errors)
+    require_needles(text, REQUIRED_README_LEAD_PHRASES, "README.md", errors)
     require_only_negated_claims(text, "README.md", errors)
     line_count = len(text.splitlines())
     require(line_count <= 150, f"README.md should stay concise, got {line_count} lines", errors)

@@ -1,74 +1,67 @@
 # arm64golf
 
-*arm64golf is an open, signed leaderboard for the shortest ARM64 routines.*
+Open as of 2026-06-08. The challenge is live — submit, contribute, or host a Mac.
 
-Live as of 2026-06-08. The challenge is live — host a Mac, write a routine, or contribute a prompt.
+## Current surface
 
-## Why this matters
+12 instructions — current shortest verified ARM64 sort3.
 
-The routines arm64golf targets — sort 3 integers, sort 4, sort 5, fixed-size hash, small `memcmp`, popcount, leading-zero count — execute trillions of times a day on the hardware that runs the modern world: iPhones, M-series Macs, modern Androids, every AWS Graviton instance. Compilers cannot find their shortest forms. Their search space is too constrained by correctness preservation through high-level passes. Manual superoptimization has found shorter forms since Massalin's 1987 paper, through STOKE (2013), through AlphaDev (Nature 618, 2023). But the published records are old, scoped to x86, or closed.
+- 17 — AlphaDev x86 reference (Nature 618, 2023)
+- 18 — clang -O3 ARM64 baseline
+- 12 — arm64golf current best
 
-There is no public source today for the question "what is the shortest known ARM64 implementation of X?" A libc maintainer, a real-time-systems engineer, a compiler developer who wants to know the answer right now has nowhere to look. That gap is what arm64golf exists to close.
+This is a committed snapshot; the current best may have improved since this README was committed, so see the live leaderboard for the latest score.
 
-## What verified means here
+arm64golf is a public, signed leaderboard accumulating shortest-known ARM64 routines — not claiming authority, building it.
 
-A leaderboard is only as useful as its trust model. arm64golf's is explicit:
+## Best verified per provider/model/template
 
-- Every entry passes a deterministic 1200-case verifier. Replay any claim with `bin/verify-receipt.py` — no trust in operators required. The cryptographic property is that nobody can fake a working routine; `score=12` means the routine actually sorts every test case correctly.
-- Instruction counts are computed by a deterministic normalizer. Re-count any entry yourself via the same normalizer in `harness/store.py`.
+The web page renders `web/public/leaderboard.json` as the primary chart: Best verified per (provider, model, template). Lower instruction counts are better, and entries with no verified candidate render as `none`.
 
-When the leaderboard says current best is 12 instructions, it claims:
+## Trajectory
 
-> 12 is the shortest ARM64 sort3 verified and signed into this public log to date.
+The page also renders Best-known instruction count over time from verified `rows[]`, sorted by `discovered_at`. The running minimum shows the move from the 18-instruction baseline to the current 12-instruction best.
 
-It does not claim:
+## Score history
 
-- 12 is globally optimal.
-- 12 is the shortest known anywhere.
+The score history table lists every verified `sort3-arm64` candidate with score, candidate hash, model, provider, receipt signature prefix, and discovery time. Replay any claim with `bin/verify-receipt.py`.
 
-No public source for that broader claim exists; that gap is the point. The leaderboard's job is to accumulate the shortest known, with cryptographic provenance, from any source — papers, compiler intrinsics, hand-crafted routines, LLM searches, hybrid pipelines. Have you seen shorter? Submit it. The verifier runs, the receipt signs, the log appends — and you get the credit attached to that hash forever.
+## How it works
 
-AlphaDev published x86 records in 2023 but no ARM64 numbers; their production artifacts are closed. arm64golf's contribution is not to compete with AlphaDev's authority — neither of us is a global oracle. Our contribution is the open public log itself: a place where the shortest known can converge.
+Submitted ARM64 assembly is assembled, sandboxed under `sandbox-exec`, and run against 1200 deterministic test cases. Any failure rejects the candidate. Passing candidates are hashed, scored by instruction count, and signed into an ed25519 receipt anyone can replay.
 
-## What we'll deliver
+## Will you find a shorter routine?
 
-A growing reference set of shortest-known ARM64 implementations of fundamental routines, each one signed, each one reproducible:
+sort3, sort4, sort5, hash variants, small `memcmp`, popcount, leading-zero count — fundamental routines that execute trillions of times a day on every modern device. Compilers cannot find their shortest forms; their search space is too constrained. There is no public source today for what the shortest known ARM64 implementation of X is.
 
-- sort3 today at 12 instructions; can 11 be reached, or is 12 provably optimal?
-- sort4 (AlphaDev x86 reference: 28). No published ARM64 number.
-- sort5 (AlphaDev x86 reference: 43). No published ARM64 number.
-- Fixed-size hash variants on common widths.
-- Small `memcmp` / `memcpy` / `strlen` variants on common lengths.
-- Bit-level primitives — popcount, leading-zero count.
+Every entry is replayable with the public key via `bin/verify-receipt.py`. The leaderboard does not claim 12 is globally shortest — it accumulates the shortest verified to date. Have you seen shorter? Submit it.
 
-Each entry gets an immutable hash a paper or libc patch can cite. Each routine compiler vendors and libc maintainers can evaluate directly, with a verified provenance trail. The order in which these problems get added depends on contributor interest and demand.
-
-## How to join
+## Participate
 
 ### Host a Mac
 
-If you have an Apple Silicon Mac with idle hours and at least 8 GB of unified memory, you become research infrastructure the moment you join. Your provider id is signed into every receipt your node produces, in the public log, forever.
+Apple Silicon Macs with idle hours become research infrastructure. Your provider id is signed into every receipt produced on your node.
 
 → [Run a provider on MacProvider](https://github.com/Augustas11/macprovider#for-providers)
 
 ### Write a routine
 
-If you can write ARM64 assembly that sorts in fewer than 12 instructions, submit it. The operator runs the deterministic verifier and signs the result. Your hash on the public log forever; a future libc patch or paper can cite that exact hash.
+Submit ARM64 assembly that beats the current best on the leaderboard. The verifier signs passing candidates into the public log.
 
-Equally welcome: if you've seen a shorter ARM64 implementation in a paper, a compiler intrinsic, a codebase, a conference talk, or your own private notes — submit it. The receipt cares only that the routine verifies; it doesn't care where the routine came from. You get the credit attached to the hash.
-
-→ [Submit a routine](https://github.com/Augustas11/arm64golf/issues/new?template=open-submission.md)  
-→ [How submissions work](https://github.com/Augustas11/arm64golf/blob/main/submissions/CONTRIBUTING.md)
+→ [Submit a routine](https://github.com/Augustas11/arm64golf/issues/new?template=open-submission.md)
 
 ### Contribute a prompt
 
-If you find a prompt that surfaces structure the existing templates miss, contribute it. The operator registers the template and signs the `template_id` into every receipt the template produces.
+Prompt templates are first-class artifacts. When a template finds structure, its id is signed into the resulting receipts.
 
 → [Contribute a prompt template](https://github.com/Augustas11/arm64golf/blob/main/prompts/CONTRIBUTING.md)
 
-## How verification works
+## What's next
 
-Each submitted ARM64 routine is assembled into a native binary and executed under a deny-by-default macOS `sandbox-exec` profile against 1200 deterministic test cases. Any failure rejects the candidate. A passing candidate is hashed, scored by static instruction count after normalization, and bound into an ed25519 receipt. Anyone with `receipts/PUBKEY` can independently re-derive any score on the leaderboard from the recorded receipt and the candidate bytes.
+- sort3 today at 12; can 11 be reached?
+- sort4 (AlphaDev x86: 28). ARM64 unknown.
+- sort5 (AlphaDev x86: 43). ARM64 unknown.
+- fixed-size hash, small `memcmp`/`memcpy`/`strlen`, popcount, leading-zero count.
 
 ## Run it yourself
 
@@ -105,9 +98,9 @@ Running the marketplace harness in `harness/loop.py` requires `MACPROVIDER_API_K
 ## Links
 
 - [SPEC.md](SPEC.md) — full architecture
-- [REPORT.md](REPORT.md) — current results and Phase 4 marketplace finding
-- [prompts/CONTRIBUTING.md](prompts/CONTRIBUTING.md) — Track B, prompt templates
-- [submissions/CONTRIBUTING.md](submissions/CONTRIBUTING.md) — Track C, open submissions
+- [REPORT.md](REPORT.md) — current results
+- [prompts/CONTRIBUTING.md](prompts/CONTRIBUTING.md) — prompt templates
+- [submissions/CONTRIBUTING.md](submissions/CONTRIBUTING.md) — open submissions
 - [bin/](bin/) — operator tools
 
 ## License

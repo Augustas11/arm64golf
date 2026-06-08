@@ -16,16 +16,16 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <a class="skip" href="#why">Skip to challenge</a>
+    <a class="skip" href="#participate">Skip to challenge</a>
 
     <header class="topbar">
       <a class="brand" href="./">arm64golf<span class="brand-dot">.</span></a>
       <nav>
-        <a href="#why">Why</a>
-        <a href="#what">What</a>
-        <a href="#join">How to join</a>
-        <a href="#frontier">Frontier</a>
-        <a href="#leaderboard">Leaderboard</a>
+        <a href="#improvement">Chart</a>
+        <a href="#trajectory">Trajectory</a>
+        <a href="#leaderboard">History</a>
+        <a href="#how">How it works</a>
+        <a href="#participate">Participate</a>
         <a href="https://github.com/Augustas11/arm64golf" rel="noopener">GitHub</a>
       </nav>
     </header>
@@ -35,136 +35,75 @@
         Open as of 2026-06-08. The challenge is live — submit, contribute, or host a Mac.
       </section>
 
-      <section class="hero">
-        <p class="eyebrow" id="attribution-line"><em>arm64golf is an open, signed leaderboard for the shortest ARM64 routines.</em></p>
-        <h1>arm64golf — open superoptimization for the routines that run the world.</h1>
-        <p class="lede">Open superoptimization for the routines that compile into every phone, laptop, and server. A public, signed leaderboard accumulating the shortest-known ARM64 implementations — not claiming authority, building it.</p>
-      </section>
-
-      <section class="why" id="why">
-        <h2>Why This Matters</h2>
-        <p class="body">The routines arm64golf targets — sort 3 integers, sort 4, sort 5, fixed-size hash, small memcmp, popcount, leading-zero count — execute trillions of times a day on the hardware that runs the modern world: iPhones, M-series Macs, modern Androids, every AWS Graviton instance. Compilers cannot find their shortest forms. Their search space is too constrained by correctness preservation through high-level passes. Manual superoptimization has found shorter forms since Massalin's 1987 paper, through STOKE (2013), through AlphaDev (Nature 618, 2023). But the published records are old, scoped to x86, or closed.</p>
-        <p class="body">There is no public source today for the question "what is the shortest known ARM64 implementation of X?" A libc maintainer, a real-time-systems engineer, a compiler developer who wants to know the answer right now has nowhere to look. That gap is what arm64golf exists to close.</p>
-      </section>
-
-      <section class="verified" id="verified">
-        <h2>What Verified Means Here</h2>
-        <p class="body">A leaderboard is only as useful as its trust model. arm64golf's is explicit: every entry passes a deterministic 1200-case verifier. Replay any claim with <code>bin/verify-receipt.py</code> — no trust in operators required. The cryptographic property is that nobody can fake a working routine; score=12 means the routine actually sorts every test case correctly.</p>
-        <p class="body">Instruction counts are computed by a deterministic normalizer. Re-count any entry yourself via the same normalizer in <code>harness/store.py</code>.</p>
-        <ul class="deliverables">
-          <li>When the leaderboard says current best is 12 instructions, it claims: 12 is the shortest ARM64 sort3 verified and signed into this public log to date.</li>
-          <li>It does not claim: 12 is globally optimal.</li>
-          <li>It does not claim: 12 is the shortest known anywhere.</li>
-        </ul>
-        <p class="body">No public source for that broader claim exists; that gap is the point. The leaderboard's job is to accumulate the shortest known, with cryptographic provenance, from any source — papers, compiler intrinsics, hand-crafted routines, LLM searches, hybrid pipelines. Have you seen shorter? Submit it. The verifier runs, the receipt signs, the log appends — and you get the credit attached to that hash forever.</p>
-        <p class="body">AlphaDev published x86 records in 2023 but no ARM64 numbers; their production artifacts are closed. arm64golf's contribution is not to compete with AlphaDev's authority — neither of us is a global oracle. Our contribution is the open public log itself: a place where the shortest known can converge.</p>
-      </section>
-
-      <section class="what" id="what">
-        <h2>What We'll Deliver</h2>
-        <p class="body">A growing reference set of shortest-known ARM64 implementations of fundamental routines, each one signed, each one reproducible:</p>
-        <ul class="deliverables">
-          <li>sort3 today at 12 instructions; can 11 be reached, or is 12 provably optimal?</li>
-          <li>sort4 (AlphaDev x86 reference: 28). No published ARM64 number.</li>
-          <li>sort5 (AlphaDev x86 reference: 43). No published ARM64 number.</li>
-          <li>Fixed-size hash variants on common widths.</li>
-          <li>Small memcmp / memcpy / strlen variants on common lengths.</li>
-          <li>Bit-level primitives — popcount, leading-zero count.</li>
-        </ul>
-        <p class="body">Each entry gets an immutable hash a paper or libc patch can cite. Each routine compiler vendors and libc maintainers can evaluate directly, with a verified provenance trail. The order in which these problems get added depends on contributor interest and demand.</p>
-      </section>
-
-      <section class="join" id="join">
-        <h2>How To Join</h2>
-        <div class="join-paths">
-          <section class="join-path" aria-labelledby="join-host">
-            <h3 id="join-host">Host a Mac</h3>
-            <p class="body">If you have an Apple Silicon Mac with idle hours and at least 8 GB of unified memory, you become research infrastructure the moment you join. Your provider id is signed into every receipt produced on your node, in the public log, forever. The more diverse the hardware on the network, the more structural insights surface.</p>
-            <a class="cta-button" href="https://github.com/Augustas11/macprovider#for-providers" rel="noopener">Run a provider on MacProvider →</a>
-          </section>
-
-          <section class="join-path" aria-labelledby="join-routine">
-            <h3 id="join-routine">Write a routine</h3>
-            <p class="body">If you can write ARM64 assembly that sorts in fewer than 12 instructions, submit it. The operator runs the deterministic verifier and signs the result. Your hash on the public log forever; a future libc patch or paper can cite that exact hash.</p>
-            <p class="body">Equally welcome: if you've seen a shorter ARM64 implementation in a paper, a compiler intrinsic, a codebase, a conference talk, or your own private notes — submit it. The receipt cares only that the routine verifies; it doesn't care where the routine came from. You get the credit attached to the hash.</p>
-            <div class="cta-group">
-              <a class="cta-button" href="https://github.com/Augustas11/arm64golf/issues/new?template=open-submission.md" rel="noopener">Submit a routine →</a>
-              <a class="secondary-link" href="https://github.com/Augustas11/arm64golf/blob/main/submissions/CONTRIBUTING.md" rel="noopener">How submissions work →</a>
-            </div>
-          </section>
-
-          <section class="join-path" aria-labelledby="join-prompt">
-            <h3 id="join-prompt">Contribute a prompt</h3>
-            <p class="body">
-              If you find a prompt that surfaces structure the existing templates miss, contribute it. The
-              operator registers the template, runs the canary, and signs the template_id into every receipt
-              the template produces. Prompts are first-class artifacts in the public record.
-            </p>
-            <a class="cta-button" href="https://github.com/Augustas11/arm64golf/blob/main/prompts/CONTRIBUTING.md" rel="noopener">Contribute a prompt template →</a>
-          </section>
+      <section class="stat-hero" aria-labelledby="hero-title">
+        <p class="eyebrow" id="attribution-line">arm64golf — open superoptimization for the routines that run the world</p>
+        <h1 id="hero-title" class="sr-only">arm64golf current shortest verified ARM64 sort3</h1>
+        <div class="stat-big" aria-describedby="hero-score-label"><span id="hero-best-score"></span></div>
+        <p class="stat-unit" id="hero-score-label">instructions — current shortest verified ARM64 sort3</p>
+        <div class="stat-comparison-row" aria-label="instruction count comparison">
+          <article class="stat-card">
+            <small>Nature 2023</small>
+            <strong>17</strong>
+            <span>AlphaDev x86 reference (Nature 618, 2023)</span>
+          </article>
+          <article class="stat-card">
+            <small>compiler</small>
+            <strong>18</strong>
+            <span>clang -O3 ARM64 baseline</span>
+          </article>
+          <article class="stat-card current">
+            <small>this leaderboard</small>
+            <strong id="hero-current-comparison-score"></strong>
+            <span>arm64golf current best (this surface)</span>
+          </article>
         </div>
+        <p class="takeaway"><em>A public, signed leaderboard accumulating shortest-known ARM64 routines — not claiming authority, building it.</em></p>
       </section>
 
-      <section class="frontier" id="frontier">
-        <h2>Frontier</h2>
-        <p class="body">
-          The current best ARM64 sort3 is 12 instructions, in the form of three
-          <code>cmp/csel/csel/mov</code> tiles. Both verified 12-instruction routines were surfaced from
-          Qwen-Coder-7B when the prompt included a worked csel example. The leaderboard also includes two
-          distinct 13-instruction csel-tile variants from Llama-3.2-3B on the neutral prompt — meaningful
-          because the smaller model surfaced the structure without an embedded hint.
+      <section class="chart-section primary-chart" id="improvement" aria-labelledby="improvement-title">
+        <div class="section-heading">
+          <h2 id="improvement-title">Best verified per (provider, model, template)</h2>
+          <p class="chart-caption">Lower instruction counts are better; shorter bars mark stronger verified results.</p>
+        </div>
+        <div class="chart-wrap" id="improvement-chart" aria-label="Best verified score per provider, model, and template">
+          <p class="placeholder">Loading marketplace data…</p>
+        </div>
+        <details class="pair-detail">
+          <summary>Per-pair table</summary>
+          <div class="table-wrap">
+            <table class="frontier-table pairs-table">
+              <thead>
+                <tr>
+                  <th>Provider</th>
+                  <th>Model</th>
+                  <th>Template</th>
+                  <th>Best verified</th>
+                  <th>Verified/evaluated</th>
+                </tr>
+              </thead>
+              <tbody id="pairs-table-rows">
+                <tr><td colspan="5">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section class="chart-section" id="trajectory" aria-labelledby="trajectory-title">
+        <div class="section-heading">
+          <h2 id="trajectory-title">Best-known instruction count over time</h2>
+          <p class="chart-caption">Every verified row is plotted chronologically; the line tracks the running minimum.</p>
+        </div>
+        <div class="chart-wrap compact" id="trajectory-chart" aria-label="Best-known ARM64 sort3 instruction count over time">
+          <p class="placeholder">Loading score trajectory…</p>
+        </div>
+        <p class="verification-note">
+          Every entry is replayable with the public key via <code>bin/verify-receipt.py</code>. The leaderboard does not claim 12 is globally shortest — it accumulates the shortest verified to date. Have you seen shorter? Submit it.
         </p>
-
-        <table class="frontier-table">
-          <thead>
-            <tr>
-              <th>Problem</th>
-              <th>ISA</th>
-              <th>Reference</th>
-              <th>Baseline in harness</th>
-              <th>Best verified</th>
-              <th>Verifier</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>sort3-arm64</code></td>
-              <td>ARM64</td>
-              <td>17 (AlphaDev, x86)</td>
-              <td>18 (<code>726c3e4c49b5</code>)</td>
-              <td id="best-cell">— (<code class="mono" id="best-hash">—</code>)</td>
-              <td>1200 deterministic cases</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <h3 class="subhead">Per-pair Pareto</h3>
-        <div class="table-wrap">
-          <table class="frontier-table pairs-table">
-            <thead>
-              <tr>
-                <th>Provider</th>
-                <th>Model</th>
-                <th>Template</th>
-                <th>Best verified</th>
-                <th>Verified/evaluated</th>
-              </tr>
-            </thead>
-            <tbody id="pairs-table-rows">
-              <tr><td colspan="5">Loading…</td></tr>
-            </tbody>
-          </table>
-        </div>
       </section>
 
       <section class="leaderboard" id="leaderboard" aria-labelledby="leaderboard-title">
-        <h2 id="leaderboard-title">Leaderboard</h2>
-        <p class="body">
-          All verified candidates for <code>sort3-arm64</code>. Lower instruction count is better. The
-          receipt column is the first 16 base64 characters of the ed25519 signature; the full signature
-          is in <code>receipts/&lt;candidate_hash_short&gt;.json</code>.
-        </p>
-
+        <h2 id="leaderboard-title">Score history</h2>
         <div class="stats">
           <div>
             <span class="kicker">Best verified</span>
@@ -182,7 +121,6 @@
             <small>UTC</small>
           </div>
         </div>
-
         <div class="table-wrap">
           <table>
             <thead>
@@ -203,31 +141,53 @@
         </div>
       </section>
 
-      <section class="verification" id="verification">
-        <h2>How Verification Works</h2>
+      <section id="how" aria-labelledby="how-title">
+        <h2 id="how-title">How it works</h2>
         <p class="body">
-          The harness submits a prompt to an open-weight coding model through an OpenAI-compatible
-          endpoint on MacProvider. With <code>--allow-marketplace-attribution</code>, the harness can pin
-          to a specific <code>(provider, model)</code> pair. Each model response is parsed for an ARM64
-          assembly block, assembled into a native binary, and executed under a deny-by-default sandbox
-          profile against 1200 deterministic test cases. Any failure rejects the candidate.
-        </p>
-        <p class="body">
-          A passing candidate is hashed, scored by static instruction count after a normalization pass, and
-          bound into an ed25519 receipt that names the <code>(provider, model, template)</code> it came
-          from: <code>kind='reference-harness'</code>, with signed <code>template_id</code> details. The
-          public score for a problem is the lowest verified instruction count on record.
-        </p>
-        <p class="body">
-          The receipt-signing key is operator-held and never sees model output. Anyone with
-          <code>receipts/PUBKEY</code> and the harness source can re-derive any score on the leaderboard
-          from the recorded receipt and the candidate bytes. The leaderboard is therefore a public log of
-          replayable claims, not a ranking of submissions.
+          Submitted ARM64 assembly is assembled, sandboxed under <code>sandbox-exec</code>, and run against 1200 deterministic test cases. Any failure rejects the candidate. Passing candidates are hashed, scored by instruction count, and signed into an ed25519 receipt anyone can replay.
         </p>
       </section>
 
+      <section id="challenge" aria-labelledby="challenge-title">
+        <h2 id="challenge-title">Will you find a shorter routine?</h2>
+        <p class="body">
+          sort3, sort4, sort5, hash variants, small memcmp, popcount, leading-zero count — fundamental routines that execute trillions of times a day on every modern device. Compilers cannot find their shortest forms; their search space is too constrained. There is no public source today for what the shortest known ARM64 implementation of X is.
+        </p>
+      </section>
+
+      <section id="participate" aria-labelledby="participate-title">
+        <h2 id="participate-title">Participate</h2>
+        <div class="participate-cards">
+          <article class="participate-card">
+            <h3>Host a Mac</h3>
+            <p>Apple Silicon Macs with idle hours become research infrastructure. Your provider id is signed into every receipt produced on your node.</p>
+            <a class="cta-button" href="https://github.com/Augustas11/macprovider#for-providers" rel="noopener">Run a provider</a>
+          </article>
+          <article class="participate-card">
+            <h3>Write a routine</h3>
+            <p>Submit ARM64 assembly that beats the current best on the leaderboard. The verifier signs passing candidates into the public log.</p>
+            <a class="cta-button" href="https://github.com/Augustas11/arm64golf/issues/new?template=open-submission.md" rel="noopener">Submit a routine</a>
+          </article>
+          <article class="participate-card">
+            <h3>Contribute a prompt</h3>
+            <p>Prompt templates are first-class artifacts. When a template finds structure, its id is signed into the resulting receipts.</p>
+            <a class="cta-button" href="https://github.com/Augustas11/arm64golf/blob/main/prompts/CONTRIBUTING.md" rel="noopener">Contribute a prompt</a>
+          </article>
+        </div>
+      </section>
+
+      <section id="frontier" aria-labelledby="frontier-title">
+        <h2 id="frontier-title">What's next</h2>
+        <ul class="deliverables">
+          <li>sort3 today at 12; can 11 be reached?</li>
+          <li>sort4 (AlphaDev x86: 28). ARM64 unknown.</li>
+          <li>sort5 (AlphaDev x86: 43). ARM64 unknown.</li>
+          <li>Fixed-size hash, small memcmp/memcpy/strlen, popcount, leading-zero count.</li>
+        </ul>
+      </section>
+
       <footer>
-        <p class="footer-call"><strong>The leaderboard is appending now. Pick a path:</strong></p>
+        <p class="footer-call"><strong>The leaderboard is appending now.</strong></p>
         <p class="footer-cta-row">
           <a href="https://github.com/Augustas11/macprovider#for-providers" rel="noopener">Host a Mac</a>
           <a href="https://github.com/Augustas11/arm64golf/issues/new?template=open-submission.md" rel="noopener">Submit a routine</a>

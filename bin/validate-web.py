@@ -16,9 +16,11 @@ REQUIRED_HTML_IDS = {
     "candidate-response-count",
     "attribution-line",
     "hero-status",
+    "improvement-chart",
     "last-update",
     "leaderboard-rows",
     "pairs-table-rows",
+    "trajectory-chart",
 }
 REQUIRED_ROW_FIELDS = {
     "rank",
@@ -63,11 +65,12 @@ REQUIRED_PAIR_FIELDS = {
 }
 REQUIRED_LEAD_PHRASES = (
     "arm64golf — open superoptimization",
-    "Compilers cannot find their shortest forms",
-    "no public source today",
-    "shortest ARM64 sort3 verified and signed into this public log",
-    "It does not claim",
-    "Have you seen shorter? Submit it",
+    "current shortest verified ARM64 sort3",
+    "AlphaDev x86 reference",
+    "clang -O3 ARM64 baseline",
+    "Best verified per (provider, model, template)",
+    "Best-known instruction count over time",
+    "Have you seen shorter? Submit it.",
 )
 FORBIDDEN_INTERNAL_VOCABULARY = (
     "Private test preview",
