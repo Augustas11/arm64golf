@@ -201,6 +201,88 @@ def test_validate_docs_rejects_premature_readme_result_claim(tmp_path: Path) -> 
 
 
 @pytest.mark.parametrize(
+    "needle",
+    [
+        "Compilers cannot find their shortest forms",
+        "no public source today",
+        "shortest ARM64 sort3 verified and signed into this public log",
+        "It does not claim",
+        "Have you seen shorter? Submit it",
+        "sort4",
+        "sort5",
+        "fixed-size hash",
+        "popcount",
+        "leading-zero count",
+    ],
+)
+def test_validate_docs_rejects_missing_required_readme_trajectory_phrase(
+    tmp_path: Path, needle: str
+) -> None:
+    script = load_script("bin/validate-docs.py")
+    readme_text = Path("README.md").read_text()
+    assert needle in readme_text
+    readme = tmp_path / "README.md"
+    readme.write_text(readme_text.replace(needle, ""))
+
+    errors = script.validate_readme(readme)
+    assert any(f"README.md missing required text: {needle}" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("surface", "script_path"),
+    [
+        ("docs", "bin/validate-docs.py"),
+        ("web", "bin/validate-web.py"),
+    ],
+)
+def test_validators_reject_missing_honesty_section_marker(
+    tmp_path: Path, surface: str, script_path: str
+) -> None:
+    script = load_script(script_path)
+
+    if surface == "docs":
+        readme_text = Path("README.md").read_text()
+        assert "It does not claim" in readme_text
+        readme = tmp_path / "README.md"
+        readme.write_text(readme_text.replace("It does not claim", ""))
+
+        errors = script.validate_readme(readme)
+        assert any("README.md missing required text: It does not claim" in error for error in errors)
+    else:
+        web_dir = tmp_path / "web"
+        (web_dir / "public").mkdir(parents=True)
+        html = Path("web/index.html").read_text()
+        assert "It does not claim" in html
+        (web_dir / "index.html").write_text(html.replace("It does not claim", ""))
+        (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+        (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+        (web_dir / "public" / "leaderboard.json").write_text(
+            Path("web/public/leaderboard.json").read_text()
+        )
+
+        errors = script.validate(web_dir)
+        assert any("public lead missing required phrases: It does not claim" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("claim", "overclaim"),
+    [
+        ("globally optimal", "We claim 12 is globally optimal."),
+        ("shortest known anywhere", "We claim 12 is the shortest known anywhere."),
+    ],
+)
+def test_validate_docs_rejects_unnegated_readme_overclaims(
+    tmp_path: Path, claim: str, overclaim: str
+) -> None:
+    script = load_script("bin/validate-docs.py")
+    readme = tmp_path / "README.md"
+    readme.write_text(Path("README.md").read_text() + f"\n{overclaim}\n")
+
+    errors = script.validate_readme(readme)
+    assert any(f"README.md overclaim outside negation context: {claim}" in error for error in errors)
+
+
+@pytest.mark.parametrize(
     "term",
     [
         "Private test",
@@ -2004,8 +2086,6 @@ def test_validate_web_requires_public_lead_phrases(tmp_path: Path) -> None:
 
     for phrase in script.REQUIRED_LEAD_PHRASES:
         broken = html.replace(phrase, "removed public lead anchor")
-        if broken == html and phrase == "AlphaDev showed":
-            broken = html.replace("AlphaDev\n          showed", "AlphaDev\n          demonstrated")
         (web_dir / "index.html").write_text(broken)
         errors = script.validate(web_dir)
         assert any(f"public lead missing required phrases: {phrase}" in error for error in errors)

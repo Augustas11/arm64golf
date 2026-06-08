@@ -38,43 +38,40 @@
       <section class="hero">
         <p class="eyebrow" id="attribution-line"><em>arm64golf is an open, signed leaderboard for the shortest ARM64 routines.</em></p>
         <h1>arm64golf — open superoptimization for the routines that run the world.</h1>
-        <p class="lede">
-          ARM64 powers iPhones, M-series Macs, modern Androids, and AWS Graviton servers across a vast
-          share of daily computation. Fundamental routines — sort 3 integers, sort 5, fixed-size hash,
-          small memcmp — run trillions of times on that hardware, so each saved instruction compounds into
-          real energy, latency, and battery. In 2023, AlphaDev showed that learned search can beat
-          published references for these routines, but its result was x86-only and the production artifacts
-          remain closed. No equivalent public result exists for ARM64. arm64golf is a verifiable, signed
-          record of the shortest known ARM64 implementations, reproducible by anyone with the public key.
-        </p>
+        <p class="lede">Open superoptimization for the routines that compile into every phone, laptop, and server. A public, signed leaderboard accumulating the shortest-known ARM64 implementations — not claiming authority, building it.</p>
       </section>
 
       <section class="why" id="why">
         <h2>Why This Matters</h2>
-        <p class="body">
-          The proof that learned search can outperform handwritten compiler output on fundamental routines
-          is in. What's missing is an open ecosystem that can deliver the same kind of result on hardware
-          billions of devices actually use, with artifacts anyone can verify and extend. Closed labs
-          publish numbers and keep the production work. arm64golf publishes the routines themselves, with
-          cryptographic signatures, in a public log. That's the difference.
-        </p>
+        <p class="body">The routines arm64golf targets — sort 3 integers, sort 4, sort 5, fixed-size hash, small memcmp, popcount, leading-zero count — execute trillions of times a day on the hardware that runs the modern world: iPhones, M-series Macs, modern Androids, every AWS Graviton instance. Compilers cannot find their shortest forms. Their search space is too constrained by correctness preservation through high-level passes. Manual superoptimization has found shorter forms since Massalin's 1987 paper, through STOKE (2013), through AlphaDev (Nature 618, 2023). But the published records are old, scoped to x86, or closed.</p>
+        <p class="body">There is no public source today for the question "what is the shortest known ARM64 implementation of X?" A libc maintainer, a real-time-systems engineer, a compiler developer who wants to know the answer right now has nowhere to look. That gap is what arm64golf exists to close.</p>
+      </section>
+
+      <section class="verified" id="verified">
+        <h2>What Verified Means Here</h2>
+        <p class="body">A leaderboard is only as useful as its trust model. arm64golf's is explicit: every entry passes a deterministic 1200-case verifier. Replay any claim with <code>bin/verify-receipt.py</code> — no trust in operators required. The cryptographic property is that nobody can fake a working routine; score=12 means the routine actually sorts every test case correctly.</p>
+        <p class="body">Instruction counts are computed by a deterministic normalizer. Re-count any entry yourself via the same normalizer in <code>harness/store.py</code>.</p>
+        <ul class="deliverables">
+          <li>When the leaderboard says current best is 12 instructions, it claims: 12 is the shortest ARM64 sort3 verified and signed into this public log to date.</li>
+          <li>It does not claim: 12 is globally optimal.</li>
+          <li>It does not claim: 12 is the shortest known anywhere.</li>
+        </ul>
+        <p class="body">No public source for that broader claim exists; that gap is the point. The leaderboard's job is to accumulate the shortest known, with cryptographic provenance, from any source — papers, compiler intrinsics, hand-crafted routines, LLM searches, hybrid pipelines. Have you seen shorter? Submit it. The verifier runs, the receipt signs, the log appends — and you get the credit attached to that hash forever.</p>
+        <p class="body">AlphaDev published x86 records in 2023 but no ARM64 numbers; their production artifacts are closed. arm64golf's contribution is not to compete with AlphaDev's authority — neither of us is a global oracle. Our contribution is the open public log itself: a place where the shortest known can converge.</p>
       </section>
 
       <section class="what" id="what">
         <h2>What We'll Deliver</h2>
+        <p class="body">A growing reference set of shortest-known ARM64 implementations of fundamental routines, each one signed, each one reproducible:</p>
         <ul class="deliverables">
-          <li>A public, append-only log of the shortest known ARM64 implementations of fundamental routines, each one bound to a deterministic verifier and an ed25519 signature.</li>
-          <li>A growing problem set — sort3 today, then sort4, sort5, fixed-size hash, small memcmp — with the same framework rolling forward.</li>
-          <li>Citeable, immutable hashes that a paper or a libc patch can reference forever.</li>
-          <li>Routines that compiler vendors and libc maintainers can evaluate directly, with a verified provenance trail.</li>
-          <li>A trajectory toward the first open ARM64 equivalent of AlphaDev's published x86 results — reproducible by anyone with the public key and the harness source.</li>
+          <li>sort3 today at 12 instructions; can 11 be reached, or is 12 provably optimal?</li>
+          <li>sort4 (AlphaDev x86 reference: 28). No published ARM64 number.</li>
+          <li>sort5 (AlphaDev x86 reference: 43). No published ARM64 number.</li>
+          <li>Fixed-size hash variants on common widths.</li>
+          <li>Small memcmp / memcpy / strlen variants on common lengths.</li>
+          <li>Bit-level primitives — popcount, leading-zero count.</li>
         </ul>
-        <p class="body">
-          Today we are at sort3 with a current best of 12 instructions, three blocks of
-          <code>cmp/csel/csel/mov</code>, signed under our ed25519 key. AlphaDev never published an ARM64
-          number for sort3; the comparable x86 figure is 17. The clang -O3 ARM64 baseline is 18. Whether
-          11 (or lower) is reachable is genuinely open.
-        </p>
+        <p class="body">Each entry gets an immutable hash a paper or libc patch can cite. Each routine compiler vendors and libc maintainers can evaluate directly, with a verified provenance trail. The order in which these problems get added depends on contributor interest and demand.</p>
       </section>
 
       <section class="join" id="join">
@@ -82,23 +79,14 @@
         <div class="join-paths">
           <section class="join-path" aria-labelledby="join-host">
             <h3 id="join-host">Host a Mac</h3>
-            <p class="body">
-              If you have an Apple Silicon Mac with idle hours and at least 8 GB of unified memory, you
-              become research infrastructure the moment you join. Your provider id is signed into every
-              receipt produced on your node, in the public log, forever. The more diverse the hardware on
-              the network, the more structural insights surface.
-            </p>
+            <p class="body">If you have an Apple Silicon Mac with idle hours and at least 8 GB of unified memory, you become research infrastructure the moment you join. Your provider id is signed into every receipt produced on your node, in the public log, forever. The more diverse the hardware on the network, the more structural insights surface.</p>
             <a class="cta-button" href="https://github.com/Augustas11/macprovider#for-providers" rel="noopener">Run a provider on MacProvider →</a>
           </section>
 
           <section class="join-path" aria-labelledby="join-routine">
             <h3 id="join-routine">Write a routine</h3>
-            <p class="body">
-              If you can write ARM64 assembly that sorts faster than 12 instructions, submit it. Open the
-              issue, paste the routine, include a one-line attestation. The operator runs the deterministic
-              verifier and signs the result. Your name on the signed log forever; a hash a future paper or
-              libc patch can cite.
-            </p>
+            <p class="body">If you can write ARM64 assembly that sorts in fewer than 12 instructions, submit it. The operator runs the deterministic verifier and signs the result. Your hash on the public log forever; a future libc patch or paper can cite that exact hash.</p>
+            <p class="body">Equally welcome: if you've seen a shorter ARM64 implementation in a paper, a compiler intrinsic, a codebase, a conference talk, or your own private notes — submit it. The receipt cares only that the routine verifies; it doesn't care where the routine came from. You get the credit attached to the hash.</p>
             <div class="cta-group">
               <a class="cta-button" href="https://github.com/Augustas11/arm64golf/issues/new?template=open-submission.md" rel="noopener">Submit a routine →</a>
               <a class="secondary-link" href="https://github.com/Augustas11/arm64golf/blob/main/submissions/CONTRIBUTING.md" rel="noopener">How submissions work →</a>
