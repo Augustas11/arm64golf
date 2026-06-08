@@ -67,6 +67,12 @@ METHODOLOGICAL_NOTE_ANCHORS = (
     "no_failed_context",
     "csel-tile",
 )
+REQUIRED_STAGE_C_TEXT = (
+    "G1 — verify-only path: DONE",
+    "G4 — submission intake exists and end-to-end smoke-tested: DONE",
+    "Stage C status: 3 of 4 gates green",
+    "Awaiting G3",
+)
 
 
 class IdCollector(HTMLParser):
@@ -124,6 +130,12 @@ def validate_html(web_dir: Path, errors: list[str]) -> None:
     require(
         not missing_note_anchors,
         "web/index.html methodological note missing stable anchors: " + ", ".join(missing_note_anchors),
+        errors,
+    )
+    missing_stage_c_text = [needle for needle in REQUIRED_STAGE_C_TEXT if needle not in normalized_text]
+    require(
+        not missing_stage_c_text,
+        "web/index.html missing Stage C gate text: " + ", ".join(missing_stage_c_text),
         errors,
     )
     require("./app.js" in parser.scripts, "web/index.html does not load ./app.js", errors)
@@ -192,6 +204,9 @@ def validate_leaderboard(web_dir: Path, errors: list[str]) -> None:
                 require(pair.get("template_name") is not None, f"pair {index} template_name is required", errors)
                 require(pair.get("template_id") is not None, f"pair {index} template_id is required", errors)
             elif attribution_kind in {"open_submission", "mock"}:
+                # Open-submission rows are normally excluded from pairs[] by
+                # the exporter, but legacy JSON with that attribution remains
+                # valid as long as it does not claim prompt-template fields.
                 require(pair.get("template_name") is None, f"pair {index} template_name must be null", errors)
                 require(pair.get("template_id") is None, f"pair {index} template_id must be null", errors)
 
@@ -207,6 +222,9 @@ def validate_leaderboard(web_dir: Path, errors: list[str]) -> None:
             require(row.get("rank") == index, f"row {index} rank must be {index}", errors)
             require(isinstance(row.get("score"), int), f"row {index} score must be an integer", errors)
             require(bool(row.get("receipt_signature")), f"row {index} receipt_signature is empty", errors)
+            # Open-submission leaderboard rows are allowed. The pre-live seed
+            # attribution check only applies before any candidate responses
+            # have been recorded.
             if index == 1 and payload.get("candidate_response_count") == 0:
                 require(row.get("model_id") == "reference-baseline", "seed leaderboard row must use reference-baseline model_id", errors)
                 require(row.get("provider_id") == "local-harness", "seed leaderboard row must use local-harness provider_id", errors)

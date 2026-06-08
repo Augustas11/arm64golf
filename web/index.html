@@ -141,15 +141,19 @@
 
           <dt>Track C: Open submission track <span class="track-state gated">gated, coming</span></dt>
           <dd>
+            <p class="body">
+              Stage C status: 3 of 4 gates green. Awaiting G3 — broader (provider, model) diversity.
+              Track A providers, host a new model; or host an existing model on a new node.
+            </p>
             <ul class="gate-list" aria-label="open submission gates">
-              <li><span class="gate-marker not-yet" aria-hidden="true">[ ]</span> G1 — verify-only path: NOT YET. Flips to DONE only after <code>bin/verify-candidate.py</code> passes the existing fixture + smoke tests AND signs no model-derived receipt (its only output is open-submission receipts).</li>
+              <li><span class="gate-marker done" aria-hidden="true">[x]</span> G1 — verify-only path: DONE (<code>bin/verify-candidate.py</code>, PR #9). <code>bin/verify-candidate.py</code> passes the existing fixture + smoke tests and signs only open-submission receipts.</li>
               <li><span class="gate-marker done" aria-hidden="true">[x]</span> G2 — receipt v2 substrate in production: DONE (Phase 2)</li>
               <li><span class="gate-marker not-yet" aria-hidden="true">[ ]</span> G3 — three or more canary-complete <code>(provider, model, template)</code> reference-harness rows on the leaderboard. NOT YET (currently 6 rows but only 2 distinct <code>(provider, model)</code> tuples; the goal is breadth across at least 3 distinct tuples).</li>
-              <li><span class="gate-marker not-yet" aria-hidden="true">[ ]</span> G4 — submission intake exists and end-to-end smoke-tested: NOT YET</li>
+              <li><span class="gate-marker done" aria-hidden="true">[x]</span> G4 — submission intake exists and end-to-end smoke-tested: DONE (open-submission issue template + <code>bin/publish-open-submission.py</code> + <code>bin/validate-open-submission-flow.py</code>).</li>
             </ul>
             When all four turn green, contestants can submit raw assembly with an attestation JSON; the
-            operator runs only the verifier and signs an open-submission receipt. One of four gates is
-            open; three are not yet. Watch this section.
+            operator runs only the verifier and signs an open-submission receipt. Three of four gates are
+            open; G3 is not yet. Watch this section.
           </dd>
         </dl>
       </section>

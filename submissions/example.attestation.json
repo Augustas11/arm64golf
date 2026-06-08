@@ -1,0 +1,10 @@
+{
+  "kind": "open-submission",
+  "details": {
+    "declared_model_id": "reference-baseline",
+    "declared_provider": "manual-author",
+    "declared_search_strategy": "copied from problems/sort3-arm64/reference.s as a worked example",
+    "submitter_handle": "@Augustas11",
+    "issue_url": "https://github.com/Augustas11/arm64golf/issues/1"
+  }
+}

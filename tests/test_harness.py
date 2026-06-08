@@ -5,6 +5,7 @@ import io
 import json
 import importlib
 import importlib.util
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -865,7 +866,7 @@ def test_store_run_pairs_excludes_seed_baseline_when_it_is_the_only_attempt(tmp_
     store.close()
 
 
-def test_store_run_pairs_keeps_open_submission_without_template(tmp_path: Path) -> None:
+def test_store_run_pairs_excludes_open_submission_without_template(tmp_path: Path) -> None:
     store = Store(tmp_path / "db.sqlite")
     attempt_id = store.record_attempt("sort3-arm64", None, "ok", requested_n=1, response_count=1)
     _record_pair_evaluation(store, attempt_id=attempt_id, candidate_hash="open-hash", score=15, verified=True)
@@ -873,26 +874,11 @@ def test_store_run_pairs_keeps_open_submission_without_template(tmp_path: Path) 
     receipt_path.write_text(json.dumps({"payload": {"attestation": {"kind": "open-submission", "details": {}}}}))
     store.record_receipt("open-hash", receipt_path, "signature")
 
-    assert store.run_pairs("sort3-arm64") == [
-        {
-            "problem_id": "sort3-arm64",
-            "provider_id": "air5",
-            "model_id": "model-a",
-            "template_name": None,
-            "template_id": None,
-            "attribution_kind": "open_submission",
-            "evaluated_responses": 1,
-            "verified_count": 1,
-            "best_verified_score": 15,
-            "first_verified_response": 1,
-            "first_17_response": 1,
-            "first_16_response": 1,
-        }
-    ]
+    assert store.run_pairs("sort3-arm64") == []
     store.close()
 
 
-def test_run_pairs_handles_open_submission_provider_model(tmp_path: Path) -> None:
+def test_run_pairs_excludes_open_submission_provider_model(tmp_path: Path) -> None:
     store = Store(tmp_path / "db.sqlite")
     attempt_id = store.record_attempt("sort3-arm64", None, "ok", requested_n=1, response_count=1)
     _record_pair_evaluation(
@@ -908,22 +894,7 @@ def test_run_pairs_handles_open_submission_provider_model(tmp_path: Path) -> Non
     receipt_path.write_text(json.dumps({"payload": {"attestation": {"kind": "open-submission", "details": {}}}}))
     store.record_receipt("open-hash", receipt_path, "signature")
 
-    assert store.run_pairs("sort3-arm64") == [
-        {
-            "problem_id": "sort3-arm64",
-            "provider_id": "open-submission",
-            "model_id": "open-submission",
-            "template_name": None,
-            "template_id": None,
-            "attribution_kind": "open_submission",
-            "evaluated_responses": 1,
-            "verified_count": 1,
-            "best_verified_score": 15,
-            "first_verified_response": 1,
-            "first_17_response": 1,
-            "first_16_response": 1,
-        }
-    ]
+    assert store.run_pairs("sort3-arm64") == []
     store.close()
 
 
@@ -1995,6 +1966,24 @@ def test_validate_web_accepts_current_static_assets() -> None:
     assert script.validate(Path("web")) == []
 
 
+def test_web_validator_requires_g1_g4_done_markers(tmp_path: Path) -> None:
+    script = load_script("bin/validate-web.py")
+    web_dir = tmp_path / "web"
+    (web_dir / "public").mkdir(parents=True)
+    html = Path("web/index.html").read_text()
+    (web_dir / "index.html").write_text(html)
+    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
+    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
+    (web_dir / "public" / "leaderboard.json").write_text(Path("web/public/leaderboard.json").read_text())
+
+    assert script.validate(web_dir) == []
+
+    broken = html.replace("G4 — submission intake exists and end-to-end smoke-tested: DONE", "G4 — submission intake exists and end-to-end smoke-tested: NOT YET")
+    (web_dir / "index.html").write_text(broken)
+    errors = script.validate(web_dir)
+    assert any("missing Stage C gate text" in error for error in errors)
+
+
 def test_validate_web_accepts_methodological_note_anchor_rewording(tmp_path: Path) -> None:
     script = load_script("bin/validate-web.py")
     web_dir = tmp_path / "web"
@@ -2410,6 +2399,84 @@ def _run_verify_candidate(
     return script, script.main_logic(args), args
 
 
+def _sign_example_open_submission(tmp_path: Path) -> dict[str, Path | str | int]:
+    assembly = tmp_path / "example.s"
+    attestation = tmp_path / "example.attestation.json"
+    receipts = tmp_path / "receipts"
+    private_key = tmp_path / "data" / "sign.key"
+    public_key = receipts / "PUBKEY"
+    assembly.write_text(Path("submissions/example.s").read_text())
+    attestation.write_text(Path("submissions/example.attestation.json").read_text())
+    ensure_keypair(private_key, public_key)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "bin/verify-candidate.py",
+            "--assembly",
+            str(assembly),
+            "--attestation",
+            str(attestation),
+            "--receipts-dir",
+            str(receipts),
+            "--private-key",
+            str(private_key),
+            "--public-key",
+            str(public_key),
+            "--json",
+        ],
+        check=False,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    receipt = receipts / f"{payload['candidate_hash'][:12]}.json"
+    return {
+        "assembly": assembly,
+        "receipts": receipts,
+        "receipt": receipt,
+        "private_key": private_key,
+        "public_key": public_key,
+        "candidate_hash": payload["candidate_hash"],
+        "score": payload["score"],
+    }
+
+
+def _run_publish_open_submission(
+    *,
+    receipt: Path,
+    assembly: Path,
+    db: Path,
+    leaderboard: Path,
+    public_key: Path,
+) -> tuple[subprocess.CompletedProcess[str], dict[str, object]]:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "bin/publish-open-submission.py",
+            "--receipt",
+            str(receipt),
+            "--assembly",
+            str(assembly),
+            "--db",
+            str(db),
+            "--leaderboard-json",
+            str(leaderboard),
+            "--public-key",
+            str(public_key),
+            "--json",
+        ],
+        check=False,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+    return result, json.loads(result.stdout)
+
+
 def test_verify_candidate_happy_path(tmp_path: Path) -> None:
     script, result, args = _run_verify_candidate(tmp_path)
 
@@ -2770,6 +2837,351 @@ def test_verify_candidate_emits_open_submission_only(tmp_path: Path) -> None:
     assert payload["attestation"]["kind"] == "open-submission"
     assert payload["model_id"] == "open-submission"
     assert payload["provider_id"] == "open-submission"
+
+
+def test_publish_open_submission_happy_path(tmp_path: Path) -> None:
+    signed = _sign_example_open_submission(tmp_path)
+    db_path = tmp_path / "arm64golf.sqlite"
+    leaderboard = tmp_path / "leaderboard.json"
+
+    result, payload = _run_publish_open_submission(
+        receipt=Path(signed["receipt"]),
+        assembly=Path(signed["assembly"]),
+        db=db_path,
+        leaderboard=leaderboard,
+        public_key=Path(signed["public_key"]),
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert payload["ok"] is True
+    assert payload["candidate_hash"] == signed["candidate_hash"]
+    db = sqlite3.connect(db_path)
+    try:
+        candidate = db.execute(
+            "SELECT verified, model_id, provider_id FROM candidates WHERE candidate_hash = ?",
+            (signed["candidate_hash"],),
+        ).fetchone()
+        assert candidate == (1, "open-submission", "open-submission")
+        assert db.execute("SELECT COUNT(*) FROM evaluations WHERE candidate_hash = ?", (signed["candidate_hash"],)).fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM receipts WHERE candidate_hash = ?", (signed["candidate_hash"],)).fetchone()[0] == 1
+    finally:
+        db.close()
+
+    exported = json.loads(leaderboard.read_text())
+    assert any(row["candidate_hash"] == signed["candidate_hash"] for row in exported["rows"])
+    assert exported["pairs"] == []
+
+
+def test_publish_open_submission_rejects_assembly_hash_mismatch(tmp_path: Path) -> None:
+    signed = _sign_example_open_submission(tmp_path)
+    wrong_assembly = tmp_path / "wrong.s"
+    wrong_assembly.write_text("mov x0, x0\n")
+
+    result, payload = _run_publish_open_submission(
+        receipt=Path(signed["receipt"]),
+        assembly=wrong_assembly,
+        db=tmp_path / "arm64golf.sqlite",
+        leaderboard=tmp_path / "leaderboard.json",
+        public_key=Path(signed["public_key"]),
+    )
+
+    assert result.returncode == 1
+    assert payload["ok"] is False
+    assert any("assembly does not match receipt candidate_hash" in error for error in payload["errors"])
+
+
+def test_publish_open_submission_rejects_non_open_submission_receipt(tmp_path: Path) -> None:
+    from harness.loop import HARNESS_VERSION, reference_attestation
+
+    module = load_problem_module(Path("problems/sort3-arm64"))
+    count, source = module.baseline()
+    candidate = module.load(source)
+    receipts = tmp_path / "receipts"
+    private_key = tmp_path / "data" / "sign.key"
+    public_key = receipts / "PUBKEY"
+    payload = {
+        "attestation": reference_attestation("no_failed_context", 0.7, 0.95, 8),
+        "candidate_hash": candidate.candidate_hash,
+        "harness_version": HARNESS_VERSION,
+        "model_id": "model",
+        "problem_id": candidate.problem_id,
+        "provider_id": "air5",
+        "score": count,
+        "ts": "2026-06-05T00:00:00Z",
+    }
+    receipt = sign_receipt(payload, private_key, public_key, receipts)
+    assembly = tmp_path / "candidate.s"
+    assembly.write_text(source)
+
+    result, output = _run_publish_open_submission(
+        receipt=receipt.path,
+        assembly=assembly,
+        db=tmp_path / "arm64golf.sqlite",
+        leaderboard=tmp_path / "leaderboard.json",
+        public_key=public_key,
+    )
+
+    assert result.returncode == 1
+    assert output["ok"] is False
+    assert any("not an open-submission receipt" in error for error in output["errors"])
+
+
+def test_publish_open_submission_rejects_invalid_signature(tmp_path: Path) -> None:
+    signed = _sign_example_open_submission(tmp_path)
+    receipt = Path(signed["receipt"])
+    envelope = json.loads(receipt.read_text())
+    envelope["payload"]["score"] = 17
+    receipt.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+
+    result, payload = _run_publish_open_submission(
+        receipt=receipt,
+        assembly=Path(signed["assembly"]),
+        db=tmp_path / "arm64golf.sqlite",
+        leaderboard=tmp_path / "leaderboard.json",
+        public_key=Path(signed["public_key"]),
+    )
+
+    assert result.returncode == 1
+    assert payload["ok"] is False
+    assert payload["errors"]
+
+
+def test_publish_open_submission_idempotent(tmp_path: Path) -> None:
+    signed = _sign_example_open_submission(tmp_path)
+    db_path = tmp_path / "arm64golf.sqlite"
+    leaderboard = tmp_path / "leaderboard.json"
+    kwargs = {
+        "receipt": Path(signed["receipt"]),
+        "assembly": Path(signed["assembly"]),
+        "db": db_path,
+        "leaderboard": leaderboard,
+        "public_key": Path(signed["public_key"]),
+    }
+
+    first_result, first_payload = _run_publish_open_submission(**kwargs)
+    second_result, second_payload = _run_publish_open_submission(**kwargs)
+
+    assert first_result.returncode == 0
+    assert first_payload["ok"] is True
+    assert second_result.returncode == 0
+    assert second_payload["ok"] is True
+    assert second_payload["status"] == "already published"
+    db = sqlite3.connect(db_path)
+    try:
+        assert db.execute("SELECT COUNT(*) FROM evaluations WHERE candidate_hash = ?", (signed["candidate_hash"],)).fetchone()[0] == 1
+    finally:
+        db.close()
+
+
+def test_publish_open_submission_rejects_nul_assembly(tmp_path: Path) -> None:
+    signed = _sign_example_open_submission(tmp_path)
+    nul_assembly = tmp_path / "nul.s"
+    nul_assembly.write_text(Path(signed["assembly"]).read_text() + "\x00")
+
+    result, payload = _run_publish_open_submission(
+        receipt=Path(signed["receipt"]),
+        assembly=nul_assembly,
+        db=tmp_path / "arm64golf.sqlite",
+        leaderboard=tmp_path / "leaderboard.json",
+        public_key=Path(signed["public_key"]),
+    )
+
+    assert result.returncode == 1
+    assert payload["ok"] is False
+    assert any("assembly contains NUL byte; reject contestant submission" in error for error in payload["errors"])
+
+
+def test_publish_open_submission_refuses_non_open_candidate_attribution(tmp_path: Path) -> None:
+    signed = _sign_example_open_submission(tmp_path)
+    db_path = tmp_path / "arm64golf.sqlite"
+    store = Store(db_path)
+    store.record_candidate(
+        candidate_hash=str(signed["candidate_hash"]),
+        problem_id="sort3-arm64",
+        source=Path(signed["assembly"]).read_text(),
+        score=int(signed["score"]),
+        verified=True,
+        model_id=SEED_MODEL_ID,
+        provider_id=SEED_PROVIDER_ID,
+    )
+    store.close()
+
+    result, payload = _run_publish_open_submission(
+        receipt=Path(signed["receipt"]),
+        assembly=Path(signed["assembly"]),
+        db=db_path,
+        leaderboard=tmp_path / "leaderboard.json",
+        public_key=Path(signed["public_key"]),
+    )
+
+    assert result.returncode == 1
+    assert payload["ok"] is False
+    assert any(
+        "candidate already exists with non-open-submission attribution; open-submission cannot overwrite" in error
+        for error in payload["errors"]
+    )
+    db = sqlite3.connect(db_path)
+    try:
+        assert db.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] == 0
+        assert db.execute("SELECT model_id FROM candidates WHERE candidate_hash = ?", (signed["candidate_hash"],)).fetchone()[0] == SEED_MODEL_ID
+    finally:
+        db.close()
+
+
+def test_publish_open_submission_refuses_different_open_submission_receipt(tmp_path: Path) -> None:
+    signed = _sign_example_open_submission(tmp_path)
+    first_envelope = json.loads(Path(signed["receipt"]).read_text())
+    first_signature = first_envelope["signature"]
+    second_payload = first_envelope["payload"]
+    second_payload["attestation"]["details"]["submitter_handle"] = "@contestant-2"
+    second_receipt = sign_receipt(
+        second_payload,
+        Path(signed["private_key"]),
+        Path(signed["public_key"]),
+        Path(signed["receipts"]),
+    )
+    assert second_receipt.signature != first_signature
+
+    db_path = tmp_path / "arm64golf.sqlite"
+    store = Store(db_path)
+    store.record_candidate(
+        candidate_hash=str(signed["candidate_hash"]),
+        problem_id="sort3-arm64",
+        source=Path(signed["assembly"]).read_text(),
+        score=int(signed["score"]),
+        verified=True,
+        model_id="open-submission",
+        provider_id="open-submission",
+    )
+    store.record_receipt(str(signed["candidate_hash"]), tmp_path / "first.json", str(first_signature))
+    store.close()
+
+    result, payload = _run_publish_open_submission(
+        receipt=second_receipt.path,
+        assembly=Path(signed["assembly"]),
+        db=db_path,
+        leaderboard=tmp_path / "leaderboard.json",
+        public_key=Path(signed["public_key"]),
+    )
+
+    assert result.returncode == 1
+    assert payload["ok"] is False
+    assert any("candidate exists with different open-submission receipt; investigate" in error for error in payload["errors"])
+    db = sqlite3.connect(db_path)
+    try:
+        assert db.execute("SELECT COUNT(*) FROM evaluations WHERE candidate_hash = ?", (signed["candidate_hash"],)).fetchone()[0] == 0
+        assert db.execute("SELECT signature FROM receipts WHERE candidate_hash = ?", (signed["candidate_hash"],)).fetchone()[0] == first_signature
+    finally:
+        db.close()
+
+
+def test_publish_open_submission_rolls_back_sqlite_writes_on_failure(tmp_path: Path, monkeypatch) -> None:
+    signed = _sign_example_open_submission(tmp_path)
+    db_path = tmp_path / "arm64golf.sqlite"
+    script = load_script("bin/publish-open-submission.py")
+
+    def fail_record_receipt(self, candidate_hash: str, receipt_path: Path, signature: str) -> None:
+        raise RuntimeError("receipt write failed")
+
+    monkeypatch.setattr(script.Store, "record_receipt", fail_record_receipt)
+    args = argparse.Namespace(
+        receipt=Path(signed["receipt"]),
+        assembly=Path(signed["assembly"]),
+        db=db_path,
+        leaderboard_json=tmp_path / "leaderboard.json",
+        public_key=Path(signed["public_key"]),
+    )
+
+    payload = script.main_logic(args)
+
+    assert payload["ok"] is False
+    assert any("receipt write failed" in error for error in payload["errors"])
+    db = sqlite3.connect(db_path)
+    try:
+        for table in ["candidates", "attempts", "evaluations", "receipts"]:
+            assert db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+    finally:
+        db.close()
+
+
+def test_publish_open_submission_keeps_sqlite_commit_when_leaderboard_export_fails(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    signed = _sign_example_open_submission(tmp_path)
+    db_path = tmp_path / "arm64golf.sqlite"
+    leaderboard = tmp_path / "leaderboard.json"
+    script = load_script("bin/publish-open-submission.py")
+
+    def fail_export_leaderboard(self, problem_id: str, output_path: Path) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(script.Store, "export_leaderboard", fail_export_leaderboard)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "publish-open-submission.py",
+            "--receipt",
+            str(signed["receipt"]),
+            "--assembly",
+            str(signed["assembly"]),
+            "--db",
+            str(db_path),
+            "--leaderboard-json",
+            str(leaderboard),
+            "--public-key",
+            str(signed["public_key"]),
+            "--json",
+        ],
+    )
+
+    assert script.main() == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["errors"] == [
+        "sqlite committed but leaderboard export failed; rerun publish or run summarize-run.py"
+    ]
+
+    db = sqlite3.connect(db_path)
+    try:
+        assert db.execute(
+            "SELECT COUNT(*) FROM candidates WHERE candidate_hash = ?",
+            (signed["candidate_hash"],),
+        ).fetchone()[0] == 1
+    finally:
+        db.close()
+
+
+def test_validate_open_submission_flow_passes_on_example_fixture() -> None:
+    result = subprocess.run(
+        [sys.executable, "bin/validate-open-submission-flow.py", "--json"],
+        check=False,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert json.loads(result.stdout) == {"ok": True, "errors": []}
+
+
+def test_run_pairs_excludes_open_submission_attempts(tmp_path: Path) -> None:
+    store = Store(tmp_path / "db.sqlite")
+    attempt_id = store.record_attempt("sort3-arm64", "open-submission", "ok", requested_n=1, response_count=1)
+    _record_pair_evaluation(
+        store,
+        attempt_id=attempt_id,
+        candidate_hash="open-template-hash",
+        score=18,
+        verified=True,
+        model_id="open-submission",
+        provider_id="open-submission",
+    )
+
+    assert store.run_pairs("sort3-arm64") == []
+    store.close()
 
 
 @pytest.mark.parametrize(
