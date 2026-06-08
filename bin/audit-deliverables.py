@@ -79,9 +79,9 @@ def git_repo_status(check_visibility: bool = True) -> AuditItem:
     except json.JSONDecodeError:
         return AuditItem("github_repo", "unknown", f"origin is correct but gh returned non-JSON: {output}")
     visibility = payload.get("visibility", "")
-    if visibility != "PRIVATE":
-        return AuditItem("github_repo", "failed", f"repo visibility is {visibility}; private test mode requires PRIVATE")
-    return AuditItem("github_repo", "complete", "private test repo exists at the expected origin")
+    if visibility != "PUBLIC":
+        return AuditItem("github_repo", "failed", f"repo visibility is {visibility}; public launch requires PUBLIC")
+    return AuditItem("github_repo", "complete", "public launch verified at the expected origin")
 
 
 def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
@@ -100,7 +100,7 @@ def audit_items(check_github_visibility: bool = True) -> list[AuditItem]:
         AuditItem(
             "readme",
             "complete" if readme_doc_ok() else "missing",
-            "README contract validates: recruiting copy, participation paths, architecture, and private launch state",
+            "README contract validates: public launch copy, participation paths, verification, and local run commands",
         ),
         AuditItem(
             "sort3_module",
