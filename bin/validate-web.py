@@ -63,9 +63,11 @@ REQUIRED_PAIR_FIELDS = {
 }
 REQUIRED_LEAD_PHRASES = (
     "arm64golf — open superoptimization",
-    "ARM64 powers",
-    "AlphaDev showed",
-    "A public, append-only log",
+    "Compilers cannot find their shortest forms",
+    "no public source today",
+    "shortest ARM64 sort3 verified and signed into this public log",
+    "It does not claim",
+    "Have you seen shorter? Submit it",
 )
 FORBIDDEN_INTERNAL_VOCABULARY = (
     "Private test preview",

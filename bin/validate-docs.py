@@ -56,19 +56,25 @@ README_NEEDLES = [
     "*arm64golf is an open, signed leaderboard for the shortest ARM64 routines.*",
     "Live as of 2026-06-08. The challenge is live",
     "## Why this matters",
-    "ARM64 powers iPhones, M-series Macs, modern Androids, AWS Graviton servers",
-    "AlphaDev (DeepMind, 2023)",
-    "No equivalent public ARM64 result exists",
+    "That gap is what arm64golf exists to close",
+    "## What verified means here",
+    "Every entry passes a deterministic 1200-case verifier",
+    "Replay any claim with `bin/verify-receipt.py`",
+    "same normalizer in `harness/store.py`",
+    "AlphaDev published x86 records in 2023 but no ARM64 numbers",
+    "open public log itself",
     "## What we'll deliver",
-    "A public, append-only log of shortest ARM64 implementations",
-    "deterministic verifier and an ed25519 signature",
-    "Citeable, immutable hashes that a paper or libc patch can reference",
-    "Today the leaderboard is at sort3 with a current best of 12 instructions",
-    "AlphaDev never published an ARM64 sort3 number",
+    "A growing reference set of shortest-known ARM64 implementations",
+    "sort3 today at 12 instructions; can 11 be reached",
+    "Small `memcmp` / `memcpy` / `strlen` variants",
+    "order in which these problems get added depends on contributor interest and demand",
     "## How to join",
     "### Host a Mac",
     "https://github.com/Augustas11/macprovider#for-providers",
     "### Write a routine",
+    "Your hash on the public log forever",
+    "if you've seen a shorter ARM64 implementation in a paper",
+    "credit attached to the hash",
     "https://github.com/Augustas11/arm64golf/issues/new?template=open-submission.md",
     "submissions/CONTRIBUTING.md",
     "### Contribute a prompt",
@@ -93,9 +99,33 @@ README_NEEDLES = [
     "MIT",
 ]
 
+REQUIRED_README_TRAJECTORY_PHRASES = [
+    "Compilers cannot find their shortest forms",
+    "no public source today",
+    "shortest ARM64 sort3 verified and signed into this public log",
+    "It does not claim",
+    "Have you seen shorter? Submit it",
+    "sort4",
+    "sort5",
+    "fixed-size hash",
+    "popcount",
+    "leading-zero count",
+]
+
+README_NEGATED_CLAIMS = [
+    "globally optimal",
+    "shortest known anywhere",
+]
+
+README_NEGATION_MARKERS = [
+    "does not claim",
+    "It does not claim",
+]
+
 README_SECTIONS = [
     "# arm64golf",
     "## Why this matters",
+    "## What verified means here",
     "## What we'll deliver",
     "## How to join",
     "### Host a Mac",
@@ -149,6 +179,56 @@ def require_needles(text: str, needles: list[str], path: str, errors: list[str])
         require(needle in text, f"{path} missing required text: {needle}", errors)
 
 
+def negated_claim_start(text: str, claim_index: int) -> int:
+    for prefix in ("12 is the ", "12 is "):
+        prefix_start = claim_index - len(prefix)
+        if prefix_start >= 0 and text[prefix_start:claim_index] == prefix:
+            return prefix_start
+    return claim_index
+
+
+def claim_is_in_negated_markdown_list(text: str, claim_index: int) -> bool:
+    lines_before_claim = text[:claim_index].splitlines()
+    if not lines_before_claim:
+        return False
+    line_index = len(lines_before_claim) - 1
+    while line_index >= 0 and lines_before_claim[line_index].strip().startswith("- "):
+        line_index -= 1
+    while line_index >= 0 and lines_before_claim[line_index].strip() == "":
+        line_index -= 1
+    if line_index < 0:
+        return False
+    heading = lines_before_claim[line_index].strip()
+    return any(marker in heading for marker in README_NEGATION_MARKERS)
+
+
+def require_only_negated_claims(text: str, path: str, errors: list[str]) -> None:
+    for claim in README_NEGATED_CLAIMS:
+        start = 0
+        while True:
+            index = text.find(claim, start)
+            if index == -1:
+                break
+            claim_start = negated_claim_start(text, index)
+            allowed = False
+            for marker in README_NEGATION_MARKERS:
+                marker_start = text.rfind(marker, 0, claim_start)
+                if marker_start == -1:
+                    continue
+                gap = claim_start - (marker_start + len(marker))
+                if 0 <= gap <= 5:
+                    allowed = True
+                    break
+            if not allowed:
+                allowed = claim_is_in_negated_markdown_list(text, index)
+            require(
+                allowed,
+                f"{path} overclaim outside negation context: {claim}",
+                errors,
+            )
+            start = index + len(claim)
+
+
 def validate_spec(path: Path = REPO_ROOT / "SPEC.md") -> list[str]:
     errors: list[str] = []
     require(path.exists(), "SPEC.md is missing", errors)
@@ -182,6 +262,8 @@ def validate_readme(path: Path = REPO_ROOT / "README.md") -> list[str]:
     text = path.read_text()
     section_order(text, README_SECTIONS, "README.md", errors)
     require_needles(text, README_NEEDLES, "README.md", errors)
+    require_needles(text, REQUIRED_README_TRAJECTORY_PHRASES, "README.md", errors)
+    require_only_negated_claims(text, "README.md", errors)
     line_count = len(text.splitlines())
     require(line_count <= 150, f"README.md should stay concise, got {line_count} lines", errors)
     readme_text_lower = text.lower()
