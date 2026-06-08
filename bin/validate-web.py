@@ -61,17 +61,25 @@ REQUIRED_PAIR_FIELDS = {
     "first_17_response",
     "first_16_response",
 }
-METHODOLOGICAL_NOTE_ANCHORS = (
-    "Llama-3.2-3B",
-    "13-instruction",
-    "no_failed_context",
-    "csel-tile",
+REQUIRED_LEAD_PHRASES = (
+    "arm64golf — open superoptimization",
+    "ARM64 powers",
+    "AlphaDev showed",
+    "A public, append-only log",
 )
-REQUIRED_STAGE_C_TEXT = (
-    "G1 — verify-only path: DONE",
-    "G4 — submission intake exists and end-to-end smoke-tested: DONE",
-    "Stage C status: 3 of 4 gates green",
-    "Awaiting G3",
+FORBIDDEN_INTERNAL_VOCABULARY = (
+    "Private test preview",
+    "Stage A",
+    "Stage B",
+    "Stage C",
+    "G1 ",
+    "G2 ",
+    "G3 ",
+    "G4 ",
+    "calibration",
+    "2 providers",
+    "2 models",
+    "currently 6 pairs",
 )
 
 
@@ -126,16 +134,16 @@ def validate_html(web_dir: Path, errors: list[str]) -> None:
         "web/index.html must not embed internal sandbox host paths",
         errors,
     )
-    missing_note_anchors = [anchor for anchor in METHODOLOGICAL_NOTE_ANCHORS if anchor not in normalized_text]
+    missing_lead_phrases = [phrase for phrase in REQUIRED_LEAD_PHRASES if phrase not in normalized_text]
     require(
-        not missing_note_anchors,
-        "web/index.html methodological note missing stable anchors: " + ", ".join(missing_note_anchors),
+        not missing_lead_phrases,
+        "web/index.html public lead missing required phrases: " + ", ".join(missing_lead_phrases),
         errors,
     )
-    missing_stage_c_text = [needle for needle in REQUIRED_STAGE_C_TEXT if needle not in normalized_text]
+    leaked_terms = [term for term in FORBIDDEN_INTERNAL_VOCABULARY if term in normalized_text]
     require(
-        not missing_stage_c_text,
-        "web/index.html missing Stage C gate text: " + ", ".join(missing_stage_c_text),
+        not leaked_terms,
+        "web/index.html leaks internal vocabulary: " + ", ".join(leaked_terms),
         errors,
     )
     require("./app.js" in parser.scripts, "web/index.html does not load ./app.js", errors)

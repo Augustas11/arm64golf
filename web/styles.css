@@ -12,6 +12,9 @@
   --warn-border: #d9b07a;
   --warn-bg: #fbf6ec;
   --warn-ink: #5a3a0c;
+  --live-border: #8fb6a1;
+  --live-bg: #f0f7f3;
+  --live-ink: #214b34;
   --code-bg: #f3f4f6;
 }
 
@@ -123,10 +126,11 @@ main {
 .status-banner {
   margin-top: 22px;
   padding: 10px 14px;
-  border: 1px solid var(--warn-border);
-  background: var(--warn-bg);
-  color: var(--warn-ink);
+  border: 1px solid var(--live-border);
+  background: var(--live-bg);
+  color: var(--live-ink);
   font-size: 13px;
+  font-weight: 600;
 }
 
 .status-banner code {
@@ -213,7 +217,88 @@ section > p:last-of-type {
   margin-bottom: 28px;
 }
 
-/* ---------- Participate roles ---------- */
+/* ---------- What / Join ---------- */
+.deliverables {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 22px;
+  padding-left: 20px;
+  color: var(--ink-soft);
+  font-size: 15.5px;
+  line-height: 1.62;
+}
+
+.deliverables li::marker {
+  color: var(--ink);
+}
+
+.join-paths {
+  display: grid;
+  gap: 26px;
+  margin: 8px 0 28px;
+}
+
+.join-path {
+  padding: 0 0 26px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.join-path:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.join-path h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.cta-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.cta-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 9px 16px;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.cta-button:hover {
+  border-color: var(--ink-soft);
+  background: var(--ink-soft);
+}
+
+.secondary-link {
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.secondary-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* ---------- Legacy role styles ---------- */
 .roles {
   margin: 12px 0 28px;
   padding: 0;
@@ -455,6 +540,28 @@ footer p {
   max-width: 640px;
 }
 
+.footer-call {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.footer-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin: 0 0 14px;
+}
+
+.footer-cta-row a {
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.footer-cta-row a:hover {
+  text-decoration: underline;
+}
+
 .footer-links a {
   text-decoration: none;
   color: var(--ink-soft);
@@ -489,5 +596,19 @@ footer p {
 
   .stats {
     grid-template-columns: 1fr;
+  }
+
+  .cta-button,
+  .cta-group {
+    width: 100%;
+  }
+
+  .cta-group {
+    align-items: stretch;
+  }
+
+  .secondary-link {
+    display: block;
+    text-align: center;
   }
 }

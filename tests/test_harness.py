@@ -1966,7 +1966,7 @@ def test_validate_web_accepts_current_static_assets() -> None:
     assert script.validate(Path("web")) == []
 
 
-def test_web_validator_requires_g1_g4_done_markers(tmp_path: Path) -> None:
+def test_validate_web_requires_public_lead_phrases(tmp_path: Path) -> None:
     script = load_script("bin/validate-web.py")
     web_dir = tmp_path / "web"
     (web_dir / "public").mkdir(parents=True)
@@ -1978,43 +1978,45 @@ def test_web_validator_requires_g1_g4_done_markers(tmp_path: Path) -> None:
 
     assert script.validate(web_dir) == []
 
-    broken = html.replace("G4 — submission intake exists and end-to-end smoke-tested: DONE", "G4 — submission intake exists and end-to-end smoke-tested: NOT YET")
-    (web_dir / "index.html").write_text(broken)
-    errors = script.validate(web_dir)
-    assert any("missing Stage C gate text" in error for error in errors)
+    for phrase in script.REQUIRED_LEAD_PHRASES:
+        broken = html.replace(phrase, "removed public lead anchor")
+        if broken == html and phrase == "AlphaDev showed":
+            broken = html.replace("AlphaDev\n          showed", "AlphaDev\n          demonstrated")
+        (web_dir / "index.html").write_text(broken)
+        errors = script.validate(web_dir)
+        assert any(f"public lead missing required phrases: {phrase}" in error for error in errors)
 
 
-def test_validate_web_accepts_methodological_note_anchor_rewording(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "term",
+    [
+        "Private test preview",
+        "Stage A",
+        "Stage B",
+        "Stage C",
+        "G1 ",
+        "G2 ",
+        "G3 ",
+        "G4 ",
+        "calibration",
+        "2 providers",
+        "2 models",
+        "currently 6 pairs",
+    ],
+)
+def test_validate_web_rejects_forbidden_internal_vocabulary(tmp_path: Path, term: str) -> None:
     script = load_script("bin/validate-web.py")
+    assert term in script.FORBIDDEN_INTERNAL_VOCABULARY
     web_dir = tmp_path / "web"
     (web_dir / "public").mkdir(parents=True)
-    html = Path("web/index.html").read_text().replace(
-        "Phase 4 marketplace runs showed that Llama-3.2-3B surfaced two\n"
-        "          distinct 13-instruction csel-tile variants on the neutral <code>no_failed_context</code> prompt\n"
-        "          without any embedded csel pattern.",
-        "Phase 4 marketplace evidence: Llama-3.2-3B, using <code>no_failed_context</code>,\n"
-        "          produced a 13-instruction result in the csel-tile family without any embedded csel pattern.",
-    )
-    (web_dir / "index.html").write_text(html)
+    html = Path("web/index.html").read_text()
     (web_dir / "app.js").write_text(Path("web/app.js").read_text())
     (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
     (web_dir / "public" / "leaderboard.json").write_text(Path("web/public/leaderboard.json").read_text())
 
-    assert script.validate(web_dir) == []
-
-
-def test_validate_web_rejects_methodological_note_missing_anchor(tmp_path: Path) -> None:
-    script = load_script("bin/validate-web.py")
-    web_dir = tmp_path / "web"
-    (web_dir / "public").mkdir(parents=True)
-    html = Path("web/index.html").read_text().replace("csel-tile", "conditional-select")
-    (web_dir / "index.html").write_text(html)
-    (web_dir / "app.js").write_text(Path("web/app.js").read_text())
-    (web_dir / "styles.css").write_text(Path("web/styles.css").read_text())
-    (web_dir / "public" / "leaderboard.json").write_text(Path("web/public/leaderboard.json").read_text())
-
+    (web_dir / "index.html").write_text(html + f"\n<p>{term}leaked</p>\n")
     errors = script.validate(web_dir)
-    assert any("methodological note missing stable anchors: csel-tile" in error for error in errors)
+    assert any(f"leaks internal vocabulary: {term}" in error for error in errors)
 
 
 def test_validate_web_rejects_incomplete_leaderboard_row(tmp_path: Path) -> None:
