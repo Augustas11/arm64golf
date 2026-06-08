@@ -535,9 +535,9 @@ Known v2 kinds:
 
 Verifiers MUST accept unknown `kind` values in the signed payload when
 `details` is a JSON object. This keeps the v2 receipt format forward-compatible
-with Stage C and other future producer classes. Stage C will introduce
-`kind: "open-submission"` in a future PR; the receipt format does not change.
-Stage C may add stricter validation for that kind.
+with Stage C and other future producer classes. Stage C uses
+`kind: "open-submission"` for contestant-supplied assembly; the receipt format
+does not change.
 
 For every kind, the canonical JSON form of `details` encoded as UTF-8 MUST be
 no more than 4096 bytes. This preserves forward-compatible unknown kinds while
@@ -642,11 +642,7 @@ for one provider/model attribution group and has this schema:
 - `first_17_response`
 - `first_16_response`
 
-Rows with `attribution_kind: "reference_harness"` MUST have non-null
-`template_name` and `template_id`; `template_id` is derived with
-`harness.prompts.template_id(template_name)`, and legacy template names that are
-no longer in the template registry are skipped. Rows with `open_submission` or
-`mock` attribution MUST set both template fields to null.
+Rows with `attribution_kind: "reference_harness"` MUST have non-null `template_name` and `template_id`; `template_id` is derived with `harness.prompts.template_id(template_name)`, and legacy template names that are no longer in the template registry are skipped. Rows with `mock` attribution MUST set both template fields to null. Legacy JSON with `open_submission` attribution remains valid only with null template fields, but current exports exclude open submissions from `pairs`.
 
 The aggregate is derived from `evaluations` joined through `attempts` for
 template attribution and `candidates` for provider/model/problem attribution.
@@ -654,10 +650,9 @@ When the exporter reaches the 256-row `pairs` cap, the top-level leaderboard
 JSON includes the sibling field `pairs_truncated: true`; otherwise the field may
 be omitted.
 
-Seed-baseline entries are excluded from `pairs`: the local seed is not a model
-search attempt and has no prompt template. The exporter excludes both explicit
-`seed-baseline` attempts and `reference-baseline` candidate attribution so old
-and current ledgers do not inflate per-pair response counts.
+Seed-baseline entries are excluded from `pairs`: the local seed is not a model search attempt and has no prompt template. The exporter excludes both explicit `seed-baseline` attempts and `reference-baseline` candidate attribution so old and current ledgers do not inflate per-pair response counts.
+
+Open-submission entries are also excluded from `pairs`: contestant submissions appear as individual leaderboard `rows[]` entries and do not aggregate into one synthetic `(open-submission, open-submission, open-submission)` pair.
 
 ## 9. Success Criteria
 
@@ -784,11 +779,54 @@ The signed payload uses the normal receipt envelope and fixes these fields:
 ```
 
 `submitter_handle` MUST match `^@[A-Za-z0-9](?:-?[A-Za-z0-9])*$`. `issue_url`
-MUST match `^https://github.com/Augustas11/arm64golf/issues/\d+$`.
-Open-submission string fields
-reject NUL bytes, strip receipt-control characters using the in-band error
-sanitization rule, and must fit the field caps after sanitization. The existing
+MUST match `^https://github.com/Augustas11/arm64golf/issues/\d+$`. String
+fields reject NUL bytes, strip receipt-control characters using the in-band
+error sanitization rule, and must fit field caps after sanitization. The
 4096-byte canonical JSON cap for `attestation.details` still applies.
+
+### 11.2 Open-submission Intake (G4)
+
+Open-submission intake is issue-first. Contestants open
+`.github/ISSUE_TEMPLATE/open-submission.md`, which labels the issue
+`open-submission` and titles it `open-submission: <one-line summary>`. The body
+requires assembly source in a fenced code block, score claim, declared producer
+fields (`model_id`, provider/runtime, search strategy prose), submitter handle,
+local verification confirmation, and acknowledgement that the operator signs
+the receipt while contestant attribution remains issue-linked.
+
+Operator workflow: save the assembly block to a local `.s` file, build
+attestation JSON from the issue fields with `details.issue_url` set to the
+issue URL, run `bin/verify-candidate.py --assembly <file> --attestation <json>`,
+and confirm the receipt kind is `open-submission`.
+
+`submissions/example.s` and `submissions/example.attestation.json` are the worked example. The baseline example demonstrates the end-to-end plumbing. The actual seed candidate already has a reference-baseline receipt and cannot be relabeled as open-submission, so re-running publish against the seed assembly will be REFUSED with a clear attribution error. To exercise a fresh publish, modify the assembly slightly (rename a register, reorder a non-load-bearing line) so the candidate_hash differs.
+
+### 11.3 Publish + Smoke (G4)
+
+`bin/publish-open-submission.py` is the operator-side publish step. Required:
+`--receipt PATH`, `--assembly PATH`. Optional: `--db data/arm64golf.sqlite`,
+`--leaderboard-json web/public/leaderboard.json`, `--public-key receipts/PUBKEY`,
+`--json`.
+
+Publish-time verification checks the receipt public key against `--public-key`,
+ed25519 signature, `attestation.kind == "open-submission"`,
+`validate_attestation(attestation)`, fixed open-submission model/provider IDs,
+assembly normalization matching `candidate_hash`, and assembly score matching the receipt score. Existing candidates with non-open-submission attribution are refused. Existing open-submission candidates return idempotently only when the stored receipt signature matches the new receipt signature; otherwise publish is refused for operator investigation. New candidates insert candidate, attempt, evaluation, and receipt rows in one SQLite transaction before exporting the leaderboard. Open-submission rows are excluded from `pairs[]`.
+
+`bin/validate-open-submission-flow.py` is the end-to-end smoke: it creates
+temporary key/receipt/SQLite/leaderboard paths, copies the examples, runs
+`bin/verify-candidate.py` and `bin/publish-open-submission.py` through
+subprocesses, asserts SQLite and leaderboard rows, then runs
+`bin/validate-receipts.py`. It has no MacProvider credential dependency.
+
+### 11.4 Stage C Status
+
+Gate status: G1 verify-only path DONE; G2 receipt v2 substrate DONE; G3 three
+or more canary-complete `(provider, model, template)` reference-harness rows
+NOT YET, because current public data has six rows but only two distinct
+`(provider, model)` tuples; G4 submission intake and smoke DONE. Stage C is 3
+of 4 gates green and opens operationally when G3 flips through broader Track A
+provider/model diversity; no further coding is required after G3.
 
 ## References
 

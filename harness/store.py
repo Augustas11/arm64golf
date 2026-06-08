@@ -91,6 +91,7 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
+        self._manual_transaction = False
         self.db.executescript(SCHEMA)
         self._migrate()
         self.db.commit()
@@ -135,6 +136,22 @@ class Store:
     def close(self) -> None:
         self.db.close()
 
+    def begin_immediate(self) -> None:
+        self.db.execute("BEGIN IMMEDIATE")
+        self._manual_transaction = True
+
+    def commit(self) -> None:
+        self.db.commit()
+        self._manual_transaction = False
+
+    def rollback(self) -> None:
+        self.db.rollback()
+        self._manual_transaction = False
+
+    def _commit_unless_manual_transaction(self) -> None:
+        if not self._manual_transaction:
+            self.db.commit()
+
     def record_attempt(
         self,
         problem_id: str,
@@ -151,7 +168,7 @@ class Store:
             """,
             (problem_id, template, status, error, requested_n, response_count),
         )
-        self.db.commit()
+        self._commit_unless_manual_transaction()
         return int(cur.lastrowid)
 
     def record_candidate(
@@ -199,7 +216,7 @@ class Store:
             """,
             (candidate_hash, problem_id, source, score, int(verified), model_id, provider_id),
         )
-        self.db.commit()
+        self._commit_unless_manual_transaction()
 
     def record_receipt(self, candidate_hash: str, receipt_path: Path, signature: str) -> None:
         self.db.execute(
@@ -212,7 +229,7 @@ class Store:
             """,
             (candidate_hash, str(receipt_path), signature),
         )
-        self.db.commit()
+        self._commit_unless_manual_transaction()
 
     def candidate(self, problem_id: str, candidate_hash: str):
         cur = self.db.execute(
@@ -238,7 +255,7 @@ class Store:
             """,
             (attempt_id, problem_id, candidate_hash, score, int(verified), error),
         )
-        self.db.commit()
+        self._commit_unless_manual_transaction()
         return int(cur.lastrowid)
 
     def attempt_count(self, problem_id: str) -> int:
@@ -448,6 +465,8 @@ class Store:
     def _pair_attribution_kind(self, template_name: str | None, receipt_path: object) -> str:
         if template_name == "mock":
             return "mock"
+        if template_name == "open-submission":
+            return "open_submission"
         if self._receipt_attestation_kind(receipt_path) == "open-submission":
             return "open_submission"
         return "reference_harness"
@@ -487,7 +506,12 @@ class Store:
                 -- Exclude seed rows using both durable seed signals. Older
                 -- ledgers may have recorded a seed attempt; current seed-only
                 -- exports keep the seed as reference-baseline attribution.
-                AND (a.template IS NULL OR a.template != 'seed-baseline')
+                -- Exclude open-submission rows from pair aggregation: they are
+                -- represented as individual leaderboard rows, not synthetic
+                -- provider/model/template groups.
+                AND a.template IS NOT NULL
+                AND a.template != 'seed-baseline'
+                AND a.template != 'open-submission'
                 AND c.model_id != ?
             ORDER BY
                 c.provider_id ASC,
